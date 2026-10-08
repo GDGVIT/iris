@@ -1,0 +1,161 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-08T17:05:23Z",
+  "title": "Design System: Iris",
+  "extensions": {
+    "colorMeta": {
+      "ground": { "role": "neutral", "displayName": "Bench Ground", "canonical": "#0d1117", "tonalRamp": ["oklch(15% 0.015 260)", "oklch(18% 0.015 260)", "oklch(28% 0.014 260)", "oklch(40% 0.012 260)", "oklch(55% 0.010 260)", "oklch(70% 0.008 260)", "oklch(84% 0.006 260)", "oklch(95% 0.004 260)"] },
+      "ground-raised": { "role": "neutral", "displayName": "Raised Ground", "canonical": "#161b22", "tonalRamp": ["oklch(15% 0.016 258)", "oklch(21% 0.016 258)", "oklch(30% 0.015 258)", "oklch(42% 0.013 258)", "oklch(56% 0.011 258)", "oklch(70% 0.009 258)", "oklch(84% 0.006 258)", "oklch(95% 0.004 258)"] },
+      "ground-sunken-fill": { "role": "neutral", "displayName": "Sunken Fill", "canonical": "#21262d", "tonalRamp": ["oklch(15% 0.014 258)", "oklch(25% 0.014 258)", "oklch(33% 0.013 258)", "oklch(44% 0.012 258)", "oklch(57% 0.010 258)", "oklch(71% 0.008 258)", "oklch(84% 0.006 258)", "oklch(95% 0.004 258)"] },
+      "rule": { "role": "neutral", "displayName": "Hairline", "canonical": "#21262d", "tonalRamp": ["oklch(15% 0.014 258)", "oklch(25% 0.014 258)", "oklch(33% 0.013 258)", "oklch(44% 0.012 258)", "oklch(57% 0.010 258)", "oklch(71% 0.008 258)", "oklch(84% 0.006 258)", "oklch(95% 0.004 258)"] },
+      "rule-strong": { "role": "neutral", "displayName": "Strong Hairline", "canonical": "#30363d", "tonalRamp": ["oklch(15% 0.013 255)", "oklch(25% 0.013 255)", "oklch(33% 0.013 255)", "oklch(44% 0.012 255)", "oklch(57% 0.010 255)", "oklch(71% 0.008 255)", "oklch(84% 0.006 255)", "oklch(95% 0.004 255)"] },
+      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#f0f6fc", "tonalRamp": ["oklch(15% 0.010 250)", "oklch(27% 0.011 250)", "oklch(39% 0.012 250)", "oklch(51% 0.012 250)", "oklch(63% 0.012 250)", "oklch(75% 0.011 250)", "oklch(87% 0.010 250)", "oklch(97% 0.008 250)"] },
+      "ink-muted": { "role": "neutral", "displayName": "Muted Ink", "canonical": "#9198a1", "tonalRamp": ["oklch(15% 0.014 255)", "oklch(27% 0.014 255)", "oklch(39% 0.014 255)", "oklch(51% 0.014 255)", "oklch(67% 0.014 255)", "oklch(77% 0.012 255)", "oklch(87% 0.010 255)", "oklch(95% 0.006 255)"] },
+      "ink-faint": { "role": "neutral", "displayName": "Faint Ink", "canonical": "#7d8590", "tonalRamp": ["oklch(15% 0.016 255)", "oklch(27% 0.016 255)", "oklch(39% 0.016 255)", "oklch(51% 0.016 255)", "oklch(61% 0.016 255)", "oklch(74% 0.013 255)", "oklch(86% 0.010 255)", "oklch(95% 0.006 255)"] },
+      "path-blue": { "role": "primary", "displayName": "Path Blue", "canonical": "#58a6ff", "tonalRamp": ["oklch(22% 0.08 252)", "oklch(32% 0.11 252)", "oklch(44% 0.14 252)", "oklch(56% 0.16 252)", "oklch(68% 0.16 252)", "oklch(72% 0.15 252)", "oklch(84% 0.09 252)", "oklch(94% 0.04 252)"] },
+      "path-blue-bright": { "role": "primary", "displayName": "Bright Path Blue", "canonical": "#79c0ff", "tonalRamp": ["oklch(22% 0.07 245)", "oklch(32% 0.10 245)", "oklch(44% 0.12 245)", "oklch(56% 0.13 245)", "oklch(68% 0.13 245)", "oklch(79% 0.12 245)", "oklch(88% 0.07 245)", "oklch(95% 0.03 245)"] },
+      "from-green": { "role": "secondary", "displayName": "From Green", "canonical": "#3fb950", "tonalRamp": ["oklch(22% 0.07 145)", "oklch(32% 0.11 145)", "oklch(44% 0.15 145)", "oklch(56% 0.17 145)", "oklch(70% 0.18 145)", "oklch(78% 0.15 145)", "oklch(87% 0.10 145)", "oklch(95% 0.04 145)"] },
+      "to-red": { "role": "tertiary", "displayName": "To Red", "canonical": "#f85149", "tonalRamp": ["oklch(22% 0.08 26)", "oklch(32% 0.12 26)", "oklch(44% 0.17 26)", "oklch(56% 0.20 26)", "oklch(65% 0.21 26)", "oklch(76% 0.15 26)", "oklch(86% 0.09 26)", "oklch(95% 0.03 26)"] },
+      "to-red-ink": { "role": "tertiary", "displayName": "To Red Ink", "canonical": "#ff7b72", "tonalRamp": ["oklch(22% 0.07 25)", "oklch(32% 0.11 25)", "oklch(44% 0.15 25)", "oklch(56% 0.17 25)", "oklch(64% 0.17 25)", "oklch(72% 0.17 25)", "oklch(85% 0.09 25)", "oklch(95% 0.03 25)"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "The single lead question; 21ch cap, balanced." },
+      "reading": { "displayName": "Reading", "purpose": "Live figures in the readings row; 18px under 640px." },
+      "control": { "displayName": "Control", "purpose": "Text typed into the route fields; never below 16px (iOS zoom)." },
+      "title": { "displayName": "Title", "purpose": "Wordmark, run-header route, route-list title." },
+      "body": { "displayName": "Body", "purpose": "Lead copy and step titles; prose capped at 62ch." },
+      "small": { "displayName": "Small", "purpose": "Masthead links, how-it-works, notice message and hint, run state, step index." },
+      "label": { "displayName": "Label", "purpose": "Field labels and reading labels; graph node labels and tooltip at 500." }
+    },
+    "shadows": [
+      { "name": "focus-ring", "value": "0 0 0 2px #0d1117, 0 0 0 4px #58a6ff", "purpose": "Every :focus-visible; not elevation." },
+      { "name": "knock-out", "value": "0 0 0 3px #0d1117", "purpose": "Step marks, so the route rail passes behind them." },
+      { "name": "tooltip-lift", "value": "0 8px 24px rgba(1, 4, 9, 0.6)", "purpose": "The pointer tooltip over the graph; the only true shadow." }
+    ],
+    "motion": [
+      { "name": "ease-out", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Entrances, the activity sweep, chevron and arrow nudges, button press." },
+      { "name": "state-fast", "value": "0.15s ease", "purpose": "Colour and border hover transitions." },
+      { "name": "sweep", "value": "1.6s ease-out infinite (activity), 2.2s (wait line)", "purpose": "A highlight travelling along a 1px line while searching." },
+      { "name": "beat", "value": "1.4s ease-in-out infinite, opacity to 0.3", "purpose": "Searching state dot and the active depth dot." },
+      { "name": "notice-in", "value": "0.35s, from translateY(-4px) opacity 0", "purpose": "Notice entrance." },
+      { "name": "run-in", "value": "0.5s, from translateY(8px) opacity 0", "purpose": "Run section entrance." },
+      { "name": "reduced-motion-pulse", "value": "activity-pulse 2s ease-in-out infinite", "purpose": "Under prefers-reduced-motion, the sweeps become a slow full-width fade so a search never looks frozen." },
+      { "name": "graph-forces", "value": "link strength 1 (distance spans axis); charge -240 horizontal / -160 vertical; forceX 0.22 / 0.16; forceY 0.10 / 0.22; collide 0.8; alphaDecay 0.03; velocityDecay 0.45", "purpose": "Fixed D3 physics: the chain settles in reading order with confidence. Do not retune outside a graph-physics task." }
+    ],
+    "breakpoints": [
+      { "name": "graph-vertical", "value": "520px (graph container width, script)" },
+      { "name": "phone", "value": "640px" },
+      { "name": "tablet", "value": "860px" },
+      { "name": "short-landscape", "value": "max-height 500px, landscape" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one filled control on the page: start a search.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Find path</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 20px; border: 1px solid transparent; border-radius: 6px; background: none; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 14px; font-weight: 600; cursor: pointer; transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s cubic-bezier(0.16, 1, 0.3, 1); } .ds-btn:active:not(:disabled) { transform: translateY(1px); } .ds-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px #0d1117, 0 0 0 4px #58a6ff; } .ds-btn-primary { background: #58a6ff; color: #0d1117; } .ds-btn-primary:hover:not(:disabled) { background: #79c0ff; } .ds-btn-primary:disabled { background: #21262d; color: #7d8590; cursor: not-allowed; }"
+    },
+    {
+      "name": "Quiet Button",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "Outlined secondary action; turns red on hover because it stops a search.",
+      "html": "<button class=\"ds-btn-quiet\">Stop search</button>",
+      "css": ".ds-btn-quiet { display: inline-flex; align-items: center; min-height: 44px; padding: 0 20px; border: 1px solid #30363d; border-radius: 6px; background: none; color: #f0f6fc; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 14px; font-weight: 600; cursor: pointer; transition: border-color 0.15s ease, color 0.15s ease; } .ds-btn-quiet:hover { border-color: #f85149; color: #ff7b72; } .ds-btn-quiet:focus-visible { outline: none; box-shadow: 0 0 0 2px #0d1117, 0 0 0 4px #58a6ff; }"
+    },
+    {
+      "name": "Text Button",
+      "kind": "button",
+      "refersTo": "button-text",
+      "description": "Bare tertiary action such as Clear.",
+      "html": "<button class=\"ds-btn-text\">Clear</button>",
+      "css": ".ds-btn-text { display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; border: 0; border-radius: 6px; background: none; color: #9198a1; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 14px; font-weight: 600; cursor: pointer; transition: color 0.15s ease; } .ds-btn-text:hover { color: #f0f6fc; } .ds-btn-text:focus-visible { outline: none; box-shadow: 0 0 0 2px #0d1117, 0 0 0 4px #58a6ff; }"
+    },
+    {
+      "name": "Route Field",
+      "kind": "input",
+      "refersTo": "input-route",
+      "description": "Underline field with its signal dot on the label (green from, red to).",
+      "html": "<div class=\"ds-field ds-field-from\"><label for=\"ds-start\">From</label><input id=\"ds-start\" type=\"text\" placeholder=\"Barack Obama\" /></div>",
+      "css": ".ds-field { font-family: 'JetBrains Mono', ui-monospace, monospace; } .ds-field label { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.02em; color: #9198a1; } .ds-field label::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); } .ds-field-from { --dot: #3fb950; } .ds-field-to { --dot: #f85149; } .ds-field input { display: block; width: 100%; margin-top: 4px; padding: 12px 0; background: transparent; border: 0; border-bottom: 1px solid #30363d; border-radius: 0; color: #f0f6fc; font: inherit; font-size: 18px; font-weight: 500; letter-spacing: -0.01em; transition: border-color 0.2s ease, box-shadow 0.2s ease; } .ds-field input::placeholder { color: #7d8590; opacity: 1; } .ds-field input:hover { border-bottom-color: #7d8590; } .ds-field input:focus { outline: none; border-bottom-color: #58a6ff; box-shadow: 0 1px 0 #58a6ff; } .ds-field input[aria-invalid='true'] { border-bottom-color: #f85149; box-shadow: 0 1px 0 #f85149; }"
+    },
+    {
+      "name": "Masthead",
+      "kind": "nav",
+      "description": "64px wordmark bar ruled below, quiet links at right.",
+      "html": "<header class=\"ds-masthead\"><a class=\"ds-wordmark\" href=\"#\">Iris</a><nav class=\"ds-links\"><a href=\"#\">API</a><a href=\"#\">Source</a></nav></header>",
+      "css": ".ds-masthead { display: flex; align-items: center; justify-content: space-between; height: 64px; border-bottom: 1px solid #21262d; font-family: 'JetBrains Mono', ui-monospace, monospace; } .ds-wordmark { color: #f0f6fc; text-decoration: none; font-size: 16px; font-weight: 700; letter-spacing: -0.01em; } .ds-links { display: flex; gap: 24px; } .ds-links a { display: inline-flex; align-items: center; min-height: 44px; font-size: 13px; color: #9198a1; text-decoration: none; transition: color 0.15s ease; } .ds-links a:hover { color: #f0f6fc; } .ds-links a:focus-visible { outline: none; box-shadow: 0 0 0 2px #0d1117, 0 0 0 4px #58a6ff; border-radius: 2px; }"
+    },
+    {
+      "name": "Notice",
+      "kind": "custom",
+      "description": "Ruled error notice: tone rule on top, hairline below, no fill or radius. Title names the problem, message adds a fact, hint gives recovery.",
+      "html": "<div class=\"ds-notice\" role=\"alert\"><svg class=\"ds-notice-icon\" viewBox=\"0 0 20 20\" aria-hidden=\"true\"><circle cx=\"10\" cy=\"10\" r=\"8\"/><path d=\"M10 5.5v5.5M10 14v.5\"/></svg><div><p class=\"ds-notice-title\">End page not found</p><p class=\"ds-notice-message\">English Wikipedia has no article titled “Mathemtics”.</p><p class=\"ds-notice-hint\">Check the spelling, or copy the title from the end of the article’s URL.</p></div></div>",
+      "css": ".ds-notice { --tone: #f85149; --tone-ink: #ff7b72; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; padding: 16px 0; border-top: 1px solid color-mix(in srgb, var(--tone) 55%, transparent); border-bottom: 1px solid #21262d; font-family: 'JetBrains Mono', ui-monospace, monospace; color: #f0f6fc; } .ds-notice p { margin: 0; } .ds-notice-icon { width: 20px; height: 20px; margin-top: 1px; fill: none; stroke: var(--tone); stroke-width: 1.6; stroke-linecap: round; } .ds-notice-title { font-weight: 600; color: var(--tone-ink); font-size: 15px; } .ds-notice-message, .ds-notice-hint { margin-top: 4px; font-size: 13px; line-height: 1.6; max-width: 62ch; } .ds-notice-hint { color: #9198a1; }"
+    },
+    {
+      "name": "Readings",
+      "kind": "custom",
+      "description": "Live figures separated by vertical hairlines; the instrument's signature row.",
+      "html": "<dl class=\"ds-readings\"><div class=\"ds-reading\"><dt>Explored</dt><dd>1,284</dd></div><div class=\"ds-reading\"><dt>Frontier</dt><dd>9,032</dd></div><div class=\"ds-reading\"><dt>Elapsed</dt><dd>12.4 s</dd></div></dl>",
+      "css": ".ds-readings { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; font-family: 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; color: #f0f6fc; } .ds-reading { padding: 0 20px; border-left: 1px solid #21262d; } .ds-reading:first-child { padding-left: 0; border-left: 0; } .ds-reading dt { font-size: 12px; color: #7d8590; } .ds-reading dd { margin: 0; display: flex; align-items: center; min-height: 36px; font-size: 22px; font-weight: 500; letter-spacing: -0.02em; }"
+    },
+    {
+      "name": "Route Step",
+      "kind": "custom",
+      "refersTo": "step-row",
+      "description": "Ruled list row threaded by the blue rail; first mark green, last red.",
+      "html": "<ol class=\"ds-steps\"><li><a class=\"ds-step\" href=\"#\"><span class=\"ds-mark\"></span><span class=\"ds-idx\">01</span><span class=\"ds-title\">Barack Obama</span></a></li><li><a class=\"ds-step\" href=\"#\"><span class=\"ds-mark\"></span><span class=\"ds-idx\">02</span><span class=\"ds-title\">Harvard University</span></a></li><li><a class=\"ds-step\" href=\"#\"><span class=\"ds-mark\"></span><span class=\"ds-idx\">03</span><span class=\"ds-title\">Mathematics</span></a></li></ol>",
+      "css": ".ds-steps { list-style: none; margin: 0; padding: 0; border-bottom: 1px solid #21262d; font-family: 'JetBrains Mono', ui-monospace, monospace; } .ds-steps li { position: relative; --mark: #58a6ff; } .ds-steps li:first-child { --mark: #3fb950; } .ds-steps li:last-child { --mark: #f85149; } .ds-steps li::before { content: ''; position: absolute; left: 4px; top: 0; bottom: 0; width: 1px; background: #58a6ff; opacity: 0.45; } .ds-steps li:first-child::before { top: 50%; } .ds-steps li:last-child::before { bottom: 50%; } .ds-step { display: grid; grid-template-columns: 9px 36px minmax(0, 1fr); align-items: center; gap: 12px; min-height: 52px; padding: 12px 0; border-top: 1px solid #21262d; color: #f0f6fc; text-decoration: none; } .ds-mark { position: relative; z-index: 1; width: 9px; height: 9px; border-radius: 50%; background: var(--mark); box-shadow: 0 0 0 3px #0d1117; } .ds-idx { font-size: 13px; color: #7d8590; } .ds-title { font-weight: 500; transition: color 0.15s ease; } .ds-step:hover .ds-title { color: #58a6ff; } .ds-step:focus-visible { outline: none; box-shadow: 0 0 0 2px #0d1117, 0 0 0 4px #58a6ff; }"
+    },
+    {
+      "name": "Label Chip",
+      "kind": "chip",
+      "refersTo": "label-chip",
+      "description": "Raised chip for graph node labels and the wait-scene ends, with its signal dot.",
+      "html": "<span class=\"ds-chip\">Barack Obama</span> <span class=\"ds-chip ds-chip-to\">Mathematics</span>",
+      "css": ".ds-chip { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; border: 1px solid #30363d; border-radius: 4px; background: #161b22; color: #f0f6fc; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; font-weight: 500; white-space: nowrap; } .ds-chip::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #3fb950; } .ds-chip-to::before { background: #f85149; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Bench Instrument",
+    "overview": "Iris is read like a piece of test equipment on a dark bench: one column of figures ruled off by 1px hairlines, a plotted field under the readings, and nothing wrapped in a card. Structure comes from rules, type and spacing alone. The page flows top to bottom in the order a visitor uses it: a display question, an underline-field route form, a run header with live readings, the dot-field plot framed by corner registration marks, and the route as a ruled list.\n\nThe world is GitHub dark and JetBrains Mono, both binding brand commitments: the README and OG image are built on them. Colour is almost entirely neutral ground and ink; the only chromatic voices are three signals with fixed meanings (green is where the route starts, red where it ends, blue is the path itself and the one primary action). Motion exists only to show the search working.\n\nThe build deliberately refuses the stacked-card SaaS layout the previous page used, neon \"cyber\" glow, SaaS gradients and glassmorphism, and bouncy graph physics.",
+    "keyCharacteristics": [
+      "One shell-width column (1040px) ruled by hairlines; no sectional cards or boxes inside boxes.",
+      "One typeface (JetBrains Mono) for everything, tabular figures on by default.",
+      "Three signal colours with fixed meanings, repeated across form labels, run header, graph nodes and the route rail.",
+      "Flat ground; the primary button is the only filled control.",
+      "Motion only as search state (sweep, beat, edge draw-in), with a reduced-motion fallback that fades rather than freezes."
+    ],
+    "rules": [
+      { "name": "The Three Signals Rule", "body": "Green means from, red means to, blue means path. The language runs through the form labels, the run header end-marks, the wait chips, the graph nodes and the route-list rail; change one and you change all of them. No signal colour is ever used decoratively.", "section": "colors" },
+      { "name": "The Token Colour Rule", "body": "Every colour comes from a `:root` custom property; D3 reads `--accent-blue` at render time. The only literal colours are translucent tints of a signal (the endpoint node halos, the dot field) and the tooltip shadow.", "section": "colors" },
+      { "name": "The One Face Rule", "body": "JetBrains Mono for every glyph on the page, including SVG node labels and the tooltip. No second family, no system display face.", "section": "typography" },
+      { "name": "The Control Floor Rule", "body": "Text inputs never drop below 16px (built at 18px); anything smaller makes iOS Safari zoom the viewport on focus.", "section": "typography" },
+      { "name": "The Hairline Rule", "body": "Sections, readings, steps and notices are separated by 1px rules (`rule` or `rule-strong`), never by bordered or filled panels. A new section is a rule and a gap, not a card.", "section": "layout" },
+      { "name": "The Token Spacing Rule", "body": "Reach for an `--sp-*` step, not a literal; ad-hoc pixel values are how the rhythm flattened before.", "section": "layout" },
+      { "name": "The Flat Ground Rule", "body": "Nothing on the page casts a shadow except the pointer tooltip. Do not lift sections, buttons or chips.", "section": "elevation" }
+    ],
+    "dos": [
+      "**Do** separate every section, reading and step with a 1px `rule` or `rule-strong` hairline and a spacing step.",
+      "**Do** keep green for the start, red for the end and blue for the path, everywhere at once.",
+      "**Do** set every glyph in JetBrains Mono with tabular figures.",
+      "**Do** take spacing from `--sp-*` and type sizes from `--fs-*`; keep inputs at 16px or above.",
+      "**Do** keep every touch target at 44px or more.",
+      "**Do** give every animation a reduced-motion form that fades rather than freezes, so a running search stays visible.",
+      "**Do** draw arrows, chevrons and icons as stroked SVG paths with round caps.",
+      "**Do** leave the D3 force parameters exactly as recorded unless the task is about graph physics."
+    ],
+    "donts": [
+      "**Don't** wrap page sections, readings or notices in filled or bordered cards; chips belong only to graph node labels, the wait-scene ends and the tooltip.",
+      "**Don't** add drop shadows to anything but the pointer tooltip.",
+      "**Don't** add blurred glows, gradients as surfaces, or glassmorphism; the only gradients are the 1px activity sweeps and the dot field.",
+      "**Don't** use a signal colour for decoration or for a meaning other than its one role.",
+      "**Don't** add a second typeface or a light theme; the GitHub-dark palette and JetBrains Mono are published brand assets.",
+      "**Don't** animate anything that is not search state."
+    ]
+  }
+}

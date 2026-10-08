@@ -73,7 +73,6 @@ class Frontier:
     parent_key: str
     fetch: FetchLinks
     max_depth: int
-    depth: int = 0
     exhausted: bool = False
 
     @property
@@ -252,7 +251,6 @@ class PathFinder:
             # This side has spent its budget; anything deeper is out of reach.
             side.exhausted = True
             return None
-        side.depth = depth
 
         pages = [item["page"] for item in batch]
         logger.info(
@@ -263,38 +261,43 @@ class PathFinder:
         found = side.fetch(
             pages, self._page_reporter(side, other, depth, counters, started)
         )
-        meetings: list[str] = []
 
+        # Each new title's parent is the first page in batch order linking to
+        # it, exactly as expanding the pages one at a time would assign it.
+        # Collecting the whole batch first turns five Redis round-trips per
+        # page into five per batch.
+        parents: dict[str, str] = {}
         for page in pages:
-            neighbours = found.get(page, [])
-            if not neighbours:
-                continue
+            for title in found.get(page, []):
+                parents.setdefault(title, page)
+        if not parents:
+            return None
 
-            unseen = [
-                title
-                for title, seen in zip(
-                    neighbours,
-                    self.store.set_contains(side.visited_key, neighbours),
-                    strict=True,
-                )
-                if not seen
-            ]
-            if not unseen:
-                continue
-
-            touching = self.store.set_contains(other.visited_key, unseen)
-            self.store.set_add(side.visited_key, *unseen)
-            self.store.hash_set(side.parent_key, dict.fromkeys(unseen, page))
-            self.store.queue_push(
-                side.queue_key, [_entry(title, depth + 1) for title in unseen]
+        candidates = list(parents)
+        unseen = [
+            title
+            for title, seen in zip(
+                candidates,
+                self.store.set_contains(side.visited_key, candidates),
+                strict=True,
             )
+            if not seen
+        ]
+        if not unseen:
+            return None
 
-            meetings += [
-                title
-                for title, touches in zip(unseen, touching, strict=True)
-                if touches
-            ]
+        touching = self.store.set_contains(other.visited_key, unseen)
+        self.store.set_add(side.visited_key, *unseen)
+        self.store.hash_set(
+            side.parent_key, {title: parents[title] for title in unseen}
+        )
+        self.store.queue_push(
+            side.queue_key, [_entry(title, depth + 1) for title in unseen]
+        )
 
+        meetings = [
+            title for title, touches in zip(unseen, touching, strict=True) if touches
+        ]
         if not meetings:
             return None
         return min(meetings, key=lambda title: self._path_cost(title, side, other))
@@ -314,6 +317,14 @@ class PathFinder:
         runs on the fetcher threads, so every shared counter is behind a lock.
         """
         report = self.on_progress
+        # Nothing is queued until the whole batch has been fetched, so the
+        # frontier size is fixed for the duration: read it once, not per page.
+        queue_size = (
+            self.store.queue_length(side.queue_key)
+            + self.store.queue_length(other.queue_key)
+            if report is not None
+            else 0
+        )
 
         def page_fetched(title: str, _titles: list[str]) -> None:
             explored, combined_depth = counters.record(side.name, depth)
@@ -322,8 +333,7 @@ class PathFinder:
             report(
                 Progress(
                     nodes_explored=explored,
-                    queue_size=self.store.queue_length(side.queue_key)
-                    + self.store.queue_length(other.queue_key),
+                    queue_size=queue_size,
                     current_depth=combined_depth,
                     last_node=title,
                     elapsed=round(time.monotonic() - started, 2),

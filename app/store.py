@@ -10,7 +10,6 @@ per-method ``try``/``except`` to add.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Iterator
 from typing import Any
 
 import redis
@@ -27,9 +26,6 @@ class RedisStore:
     def connect(cls, url: str, default_ttl: int) -> RedisStore:
         pool = redis.ConnectionPool.from_url(url, decode_responses=True)
         return cls(redis.Redis(connection_pool=pool), default_ttl)
-
-    def close(self) -> None:
-        self._redis.close()
 
     def ping(self) -> bool:
         try:
@@ -52,16 +48,6 @@ class RedisStore:
 
     def expire(self, key: str, seconds: int) -> None:
         self._redis.expire(key, seconds)
-
-    def clear_pattern(self, pattern: str) -> int:
-        """Delete every key matching ``pattern``, scanning so Redis never blocks.
-
-        The scan is completed *before* anything is deleted: removing keys while
-        a cursor is open makes Redis rehash the keyspace, which silently skips
-        keys the cursor has not reached yet.
-        """
-        keys = list(self._redis.scan_iter(match=pattern, count=500))
-        return sum(int(self._redis.delete(*batch)) for batch in _chunked(keys, 500))  # type: ignore[arg-type]
 
     # --- Sets -------------------------------------------------------------
 
@@ -98,14 +84,3 @@ class RedisStore:
 
     def queue_length(self, key: str) -> int:
         return int(self._redis.llen(key))  # type: ignore[arg-type]
-
-
-def _chunked(items: Iterable[str], size: int) -> Iterator[list[str]]:
-    batch: list[str] = []
-    for item in items:
-        batch.append(item)
-        if len(batch) >= size:
-            yield batch
-            batch = []
-    if batch:
-        yield batch

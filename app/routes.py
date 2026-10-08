@@ -24,19 +24,13 @@ from flask import (
 from marshmallow import Schema, ValidationError, fields, validate, validates_schema
 
 from app import celery, services
-from app.errors import ConflictError, ErrorCode, InvalidRequestError, NotFoundError
+from app.errors import ConflictError, ErrorCode, NotFoundError
 from app.pathfinding import ALGORITHMS, BIDIRECTIONAL
-from app.tasks import find_path_task
+from app.tasks import PROGRESS, find_path_task
 
 logger = logging.getLogger(__name__)
 
 api = Blueprint("api", __name__)
-
-PROGRESS = "PROGRESS"
-
-# Prefixes a client may clear. Anything else would let this endpoint wipe the
-# Celery result backend, which shares the same Redis database.
-CLEARABLE_PREFIXES = ("bfs:", "wiki_links:", "wiki_backlinks:", "path:", "page_info:")
 
 
 class SearchSchema(Schema):
@@ -145,14 +139,12 @@ def search_status(task_id: str) -> Response:
     return jsonify(body)
 
 
-def _result(payload: Any) -> dict[str, Any]:
+def _result(payload: dict[str, Any]) -> dict[str, Any]:
     """Unwrap a finished task.
 
     The task reports its own failures as a successful return value, so a
     Celery SUCCESS can still be a search that found nothing.
     """
-    if not isinstance(payload, dict):
-        return {"result": payload}
     if payload.get("status") == states.FAILURE:
         return {
             "status": states.FAILURE,
@@ -168,31 +160,6 @@ def _result(payload: Any) -> dict[str, Any]:
             "search_stats": payload.get("search_stats"),
         }
     }
-
-
-@api.get("/tasks")
-def list_tasks() -> Response:
-    """List active, reserved and scheduled tasks across all workers.
-    ---
-    tags: [Tasks]
-    summary: List tasks
-    responses:
-      200:
-        description: Current task queues
-    """
-    inspect = celery.control.inspect(timeout=2.0)
-    active = inspect.active() or {}
-    reserved = inspect.reserved() or {}
-
-    return jsonify(
-        {
-            "active": active,
-            "reserved": reserved,
-            "scheduled": inspect.scheduled() or {},
-            "total_active": sum(len(tasks) for tasks in active.values()),
-            "total_reserved": sum(len(tasks) for tasks in reserved.values()),
-        }
-    )
 
 
 @api.delete("/tasks/<task_id>")
@@ -227,39 +194,6 @@ def cancel_task(task_id: str) -> Response:
     return jsonify({"revoked": True, "task_id": task_id, "terminated": terminate})
 
 
-@api.delete("/tasks")
-def cancel_all_tasks() -> Response:
-    """Revoke every active and reserved task.
-    ---
-    tags: [Tasks]
-    summary: Cancel all tasks
-    parameters:
-      - name: terminate
-        in: query
-        type: boolean
-        default: true
-    responses:
-      200:
-        description: All tasks revoked
-    """
-    terminate = _wants_terminate()
-    inspect = celery.control.inspect(timeout=2.0)
-
-    task_ids = [
-        task["id"]
-        for group in ((inspect.active() or {}), (inspect.reserved() or {}))
-        for tasks in group.values()
-        for task in tasks
-    ]
-    for task_id in task_ids:
-        celery.control.revoke(task_id, terminate=terminate, signal="SIGTERM")
-
-    logger.info("all_tasks_revoked", extra={"count": len(task_ids)})
-    return jsonify(
-        {"revoked_count": len(task_ids), "task_ids": task_ids, "terminated": terminate}
-    )
-
-
 @api.get("/health")
 def health() -> tuple[Response, int]:
     """Report Redis and cache connectivity.
@@ -289,79 +223,9 @@ def health() -> tuple[Response, int]:
     )
 
 
-@api.post("/cache/clear")
-def clear_cache() -> Response:
-    """Clear cache entries matching a key pattern.
-    ---
-    tags: [System]
-    summary: Clear cache
-    parameters:
-      - in: body
-        name: body
-        schema:
-          type: object
-          properties:
-            pattern:
-              type: string
-              default: "wiki_links:*"
-              description: >
-                Must start with one of bfs:, wiki_links:, wiki_backlinks:,
-                path: or page_info:
-    responses:
-      200:
-        description: Cache cleared
-      400:
-        description: Pattern prefix not allowed
-    """
-    pattern = (request.get_json(silent=True) or {}).get("pattern", "wiki_links:*")
-    if not pattern.startswith(CLEARABLE_PREFIXES):
-        raise InvalidRequestError(
-            f"Pattern must start with one of: {', '.join(CLEARABLE_PREFIXES)}"
-        )
-
-    cleared = services().store.clear_pattern(pattern)
-    return jsonify(
-        {
-            "success": True,
-            "pattern": pattern,
-            "message": f"Cleared {cleared} cache entries",
-        }
-    )
-
-
-@api.get("/api")
-def api_info() -> Response:
-    """Return API metadata and the endpoint list.
-    ---
-    tags: [System]
-    summary: API info
-    responses:
-      200:
-        description: API information
-    """
-    return jsonify(
-        {
-            "name": "Iris Wikipedia Pathfinder API",
-            "version": "2.0.0",
-            "description": "Find paths between Wikipedia pages",
-            "endpoints": {
-                "POST /getPath": "Start pathfinding between two pages",
-                "GET /tasks/status/<task_id>": "Check search status",
-                "GET /tasks": "List active/reserved/scheduled tasks",
-                "DELETE /tasks/<task_id>": "Cancel a search",
-                "DELETE /tasks": "Cancel all searches",
-                "GET /health": "Health check",
-                "POST /cache/clear": "Clear cached entries",
-                "GET /": "Path visualization UI",
-            },
-            "swagger_ui": "/api/docs",
-        }
-    )
-
-
 # --- UI -------------------------------------------------------------------
 
-API_PREFIXES = ("getPath", "tasks", "health", "cache", "api", "apispec")
+API_PREFIXES = ("getPath", "tasks", "health", "api", "apispec")
 
 
 @api.get("/")
