@@ -17,9 +17,7 @@ dependencies = [
 dev = [
     "fakeredis>=2.37.0",
     "pytest>=8.3.3",
-    "pytest-asyncio>=0.25.0",
     "pytest-cov>=6.2.1",
-    "pytest-mock>=3.14.0",
     "ruff>=0.11.2",
     "ty>=0.0.24",
 ]
@@ -39,7 +37,6 @@ indent-style = "space"
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
-asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]

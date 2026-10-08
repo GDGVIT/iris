@@ -73,7 +73,6 @@ class Frontier:
     parent_key: str
     fetch: FetchLinks
     max_depth: int
-    depth: int = 0
     exhausted: bool = False
 
     @property
@@ -252,7 +251,6 @@ class PathFinder:
             # This side has spent its budget; anything deeper is out of reach.
             side.exhausted = True
             return None
-        side.depth = depth
 
         pages = [item["page"] for item in batch]
         logger.info(

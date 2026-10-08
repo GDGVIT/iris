@@ -16,7 +16,6 @@ if [ "$SERVICE_TYPE" = "worker" ]; then
     echo "Starting Celery worker..."
     exec celery -A celery_worker.celery worker \
         --loglevel=info \
-        --queues=celery,pathfinding,health,maintenance \
         --max-tasks-per-child=3 \
         --concurrency=2
 else

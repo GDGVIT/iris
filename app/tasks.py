@@ -16,8 +16,7 @@ from typing import Any, NotRequired, TypedDict
 
 import redis
 import requests
-from celery import Celery, states
-from celery.schedules import crontab
+from celery import states
 
 from app import celery, services
 from app.errors import (
@@ -37,11 +36,8 @@ from app.pathfinding import (
 
 logger = logging.getLogger(__name__)
 
-QUEUE_PATHFINDING = "pathfinding"
-QUEUE_HEALTH = "health"
-QUEUE_MAINTENANCE = "maintenance"
-
-SEARCH_STATE_PATTERN = "bfs:*"
+PROGRESS = "PROGRESS"
+"""Custom Celery state for an in-flight search; its meta is the progress payload."""
 
 RETRYABLE = (requests.RequestException, redis.RedisError, WikipediaAPIError)
 
@@ -89,11 +85,11 @@ def find_path_task(
     )
 
     settings = services().settings
-    fail = _failure(start_page, end_page)
+    requested = start_page, end_page
 
     def publish(stage: str, stats: SearchStats, elapsed: float = 0.0) -> None:
         self.update_state(
-            state="PROGRESS",
+            state=PROGRESS,
             meta={
                 "status": stage,
                 "search_stats": {
@@ -111,8 +107,8 @@ def find_path_task(
     try:
         # Rebind to the canonical titles: `publish` and the success payload
         # close over these names, so everything downstream reports the pages
-        # actually searched rather than whatever casing was typed. `fail` was
-        # built above from the originals, so errors still echo the input.
+        # actually searched rather than whatever casing was typed. `requested`
+        # keeps the originals, so errors still echo the input.
         start_page, end_page = _check_pages_exist(start_page, end_page)
 
         publish(
@@ -143,17 +139,21 @@ def find_path_task(
         logger.warning(
             "pathfinding_failed", extra={"code": exc.code, "error": exc.message}
         )
-        return fail(exc.message, exc.code)
+        return _failure(*requested, exc.message, exc.code)
     except RETRYABLE as exc:
         if self.request.retries >= self.max_retries:
             logger.error("pathfinding_retries_exhausted", extra={"error": str(exc)})
-            return fail(
-                f"Service unavailable after retries: {exc}", ErrorCode.INTERNAL_ERROR
+            return _failure(
+                *requested,
+                f"Service unavailable after retries: {exc}",
+                ErrorCode.INTERNAL_ERROR,
             )
         raise
     except Exception as exc:
         logger.error("pathfinding_crashed", extra={"error": str(exc)}, exc_info=True)
-        return fail(f"Unexpected error: {exc}", ErrorCode.INTERNAL_ERROR)
+        return _failure(
+            *requested, f"Unexpected error: {exc}", ErrorCode.INTERNAL_ERROR
+        )
 
     logger.info(
         "pathfinding_completed",
@@ -182,19 +182,15 @@ def find_path_task(
     }
 
 
-def _failure(start_page: str, end_page: str) -> Callable[[str, str], TaskResult]:
-    """Build the one failure shape this task ever returns."""
-
-    def fail(message: str, code: str) -> TaskResult:
-        return {
-            "status": states.FAILURE,
-            "start_page": start_page,
-            "end_page": end_page,
-            "error": message,
-            "code": code,
-        }
-
-    return fail
+def _failure(start_page: str, end_page: str, message: str, code: str) -> TaskResult:
+    """The one failure shape this task ever returns."""
+    return {
+        "status": states.FAILURE,
+        "start_page": start_page,
+        "end_page": end_page,
+        "error": message,
+        "code": code,
+    }
 
 
 def _check_pages_exist(start_page: str, end_page: str) -> tuple[str, str]:
@@ -243,54 +239,3 @@ def _find_path(
     result = finder.find(start_page, end_page, algorithm)
     app.store.set(cache_key, asdict(result), ttl=app.settings.path_cache_ttl)
     return result
-
-
-@celery.task
-def health_check_task() -> dict[str, object]:
-    """Verify the worker can reach Redis and round-trip a cache entry."""
-    store = services().store
-    key = "health_check:worker"
-    try:
-        if not store.ping():
-            raise redis.RedisError("ping failed")
-        store.set(key, "ok", ttl=60)
-        healthy = store.get(key) == "ok"
-        store.delete(key)
-    except redis.RedisError as exc:
-        logger.error("health_check_failed", extra={"error": str(exc)})
-        return {"status": states.FAILURE, "error": str(exc)}
-
-    return {
-        "status": states.SUCCESS if healthy else states.FAILURE,
-        "checks": {"redis": "healthy", "cache": "healthy" if healthy else "unhealthy"},
-    }
-
-
-@celery.task
-def cache_cleanup_task(pattern: str = SEARCH_STATE_PATTERN) -> dict[str, object]:
-    """Sweep away search state left behind by interrupted searches."""
-    cleared = services().store.clear_pattern(pattern)
-    logger.info(
-        "cache_cleanup_completed", extra={"pattern": pattern, "cleared": cleared}
-    )
-    return {"status": states.SUCCESS, "pattern": pattern, "cleared_count": cleared}
-
-
-def register_schedule(app: Celery) -> None:
-    """Route tasks to their queues and install the periodic schedule."""
-    app.conf.task_routes = {
-        find_path_task.name: {"queue": QUEUE_PATHFINDING},
-        health_check_task.name: {"queue": QUEUE_HEALTH},
-        cache_cleanup_task.name: {"queue": QUEUE_MAINTENANCE},
-    }
-    app.conf.beat_schedule = {
-        "cleanup-search-state": {
-            "task": cache_cleanup_task.name,
-            "schedule": crontab(minute=0),
-            "args": (SEARCH_STATE_PATTERN,),
-        },
-        "health-check": {
-            "task": health_check_task.name,
-            "schedule": crontab(minute="*/5"),
-        },
-    }

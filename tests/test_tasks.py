@@ -12,7 +12,7 @@ import pytest
 import requests
 
 from app.pathfinding import BFS, BIDIRECTIONAL
-from app.tasks import cache_cleanup_task, find_path_task, health_check_task
+from app.tasks import find_path_task
 
 
 def run(start="Python", end="Mathematics", algorithm=BIDIRECTIONAL) -> dict:
@@ -146,30 +146,3 @@ def test_gives_up_after_exhausting_retries_on_a_transient_fault(app):
     assert result["status"] == "FAILURE"
     assert result["code"] == "INTERNAL_ERROR"
     assert "down" in result["error"]
-
-
-# --- Maintenance tasks ----------------------------------------------------
-
-
-def test_health_check_round_trips_the_cache(app):
-    result = health_check_task.apply().result
-
-    assert result["status"] == "SUCCESS"
-    assert result["checks"] == {"redis": "healthy", "cache": "healthy"}
-
-
-def test_health_check_reports_an_unreachable_redis(app, store):
-    with patch.object(store, "ping", return_value=False):
-        result = health_check_task.apply().result
-
-    assert result["status"] == "FAILURE"
-
-
-def test_cleanup_removes_abandoned_search_state(app, store):
-    store.set("bfs:abandoned:forward:queue", ["Python"])
-    store.set("wiki_links:Python", ["Programming"])
-
-    result = cache_cleanup_task.apply().result
-
-    assert result["cleared_count"] == 1
-    assert store.get("wiki_links:Python") == ["Programming"], "caches must survive"

@@ -39,7 +39,7 @@ cleanup() {
 
 trap cleanup SIGINT SIGTERM
 
-uv run celery -A celery_worker.celery worker --loglevel=info --queues=celery,pathfinding,health,maintenance &
+uv run celery -A celery_worker.celery worker --loglevel=info &
 CELERY_PID=$!
 
 sleep 2

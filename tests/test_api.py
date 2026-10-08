@@ -207,32 +207,6 @@ def test_cancelling_a_malformed_task_id_is_a_404(client):
     assert client.delete("/tasks/not-a-uuid").status_code == 404
 
 
-def test_cancels_everything_the_workers_are_holding(client):
-    inspection = {"worker1": [{"id": "a"}, {"id": "b"}]}
-
-    with (
-        patch("app.routes.celery.control.inspect") as inspect,
-        patch("app.routes.celery.control.revoke") as revoke,
-    ):
-        inspect.return_value.active.return_value = inspection
-        inspect.return_value.reserved.return_value = {}
-        body = client.delete("/tasks").get_json()
-
-    assert body["revoked_count"] == 2
-    assert revoke.call_count == 2
-
-
-def test_lists_what_the_workers_are_doing(client):
-    with patch("app.routes.celery.control.inspect") as inspect:
-        inspect.return_value.active.return_value = {"w": [{"id": "a"}]}
-        inspect.return_value.reserved.return_value = {}
-        inspect.return_value.scheduled.return_value = {}
-        body = client.get("/tasks").get_json()
-
-    assert body["total_active"] == 1
-    assert body["total_reserved"] == 0
-
-
 # --- System ---------------------------------------------------------------
 
 
@@ -253,33 +227,6 @@ def test_health_is_503_when_redis_is_down(client, store):
 
     assert response.status_code == 503
     assert response.get_json()["status"] == "degraded"
-
-
-def test_clears_cache_entries_by_prefix(client, store):
-    store.set("wiki_links:Python", ["A"])
-    store.set("path:x", ["B"])
-
-    response = client.post("/cache/clear", json={"pattern": "wiki_links:*"})
-
-    assert response.status_code == 200
-    assert store.get("wiki_links:Python") is None
-    assert store.get("path:x") == ["B"], "other prefixes must be untouched"
-
-
-@pytest.mark.parametrize("pattern", ["*", "celery-task-meta-*", "", "unrelated:*"])
-def test_refuses_to_clear_prefixes_outside_the_allow_list(client, pattern):
-    """A wildcard here would wipe the Celery result backend in the same database."""
-    response = client.post("/cache/clear", json={"pattern": pattern})
-
-    assert response.status_code == 400
-    assert response.get_json()["code"] == "INVALID_REQUEST"
-
-
-def test_api_info_lists_the_endpoints(client):
-    body = client.get("/api").get_json()
-
-    assert body["swagger_ui"] == "/api/docs"
-    assert "POST /getPath" in body["endpoints"]
 
 
 # --- UI and routing -------------------------------------------------------
@@ -307,7 +254,16 @@ def test_unknown_api_paths_are_a_json_404(client):
 
 
 def test_every_response_carries_cors_headers(client):
-    assert client.get("/api").headers["Access-Control-Allow-Origin"] == "*"
+    assert client.get("/health").headers["Access-Control-Allow-Origin"] == "*"
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [("GET", "/tasks"), ("DELETE", "/tasks"), ("POST", "/cache/clear")],
+)
+def test_no_unauthenticated_admin_endpoints(client, method, path):
+    """The API is public: nothing may cancel other users' searches or wipe caches."""
+    assert client.open(path, method=method).status_code in (404, 405)
 
 
 def test_serves_the_swagger_spec(client):

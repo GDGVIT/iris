@@ -20,6 +20,7 @@ import requests
 
 from app.config import Settings
 from app.errors import WikipediaAPIError
+from app.store import RedisStore
 
 logger = logging.getLogger(__name__)
 
@@ -144,21 +145,13 @@ class WikipediaSource(Protocol):
     def page_status(self, title: str) -> PageStatus: ...
 
 
-class Cache(Protocol):
-    """The slice of :class:`~app.store.RedisStore` this client uses."""
-
-    def get(self, key: str) -> Any | None: ...
-
-    def set(self, key: str, value: Any, ttl: int | None = None) -> None: ...
-
-
 class WikipediaClient:
     """Fetches page links, with a shared rate limit and a Redis-backed cache."""
 
     def __init__(
         self,
         settings: Settings,
-        cache: Cache | None = None,
+        cache: RedisStore | None = None,
         session: HttpSession | None = None,
     ) -> None:
         self.settings = settings
