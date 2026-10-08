@@ -35,7 +35,10 @@ SWAGGER_TEMPLATE = {
         "title": "Iris Wikipedia Pathfinder API",
         "description": "Find the shortest path between two Wikipedia pages.",
         "version": "2.0.0",
-        "license": {"name": "MIT"},
+        "license": {
+            "name": "GPL-3.0",
+            "url": "https://www.gnu.org/licenses/gpl-3.0.html",
+        },
     },
     "basePath": "/",
     "consumes": ["application/json"],
