@@ -78,20 +78,20 @@ def build(settings: Settings, session: FakeSession, cache=None) -> WikipediaClie
 # --- Parsing --------------------------------------------------------------
 
 
-def test_keeps_articles_and_drops_other_namespaces(settings):
-    session = FakeSession(
-        FakeResponse(
-            links_payload(
-                "Python", ["Programming", "Category:Languages", "File:Snake.png"]
-            )
-        )
-    )
-    assert build(settings, session).links(["Python"]) == {"Python": ["Programming"]}
+def test_asks_the_api_for_articles_only(settings):
+    """Namespaces are filtered server-side, so they never use up the allowance."""
+    session = FakeSession(FakeResponse(links_payload("Python", ["Programming"])))
+    build(settings, session).links(["Python"])
+
+    assert session.requests[0]["plnamespace"] == 0
 
 
-def test_keeps_list_of_pages_despite_their_colon(settings):
-    session = FakeSession(FakeResponse(links_payload("Python", ["List of: things"])))
-    assert build(settings, session).links(["Python"]) == {"Python": ["List of: things"]}
+def test_keeps_articles_whose_titles_contain_a_colon(settings):
+    """A colon is not a namespace: these are ordinary articles."""
+    titles = ["Star Wars: Episode IV – A New Hope", "List of: things"]
+    session = FakeSession(FakeResponse(links_payload("Films", titles)))
+
+    assert build(settings, session).links(["Films"]) == {"Films": titles}
 
 
 def test_follows_redirects_back_to_the_requested_title(settings):
@@ -133,11 +133,22 @@ def test_missing_pages_yield_no_links(settings):
     assert build(settings, session).links(["X"]) == {"X": []}
 
 
-def test_reads_backlinks_from_their_own_response_shape(settings):
-    session = FakeSession(
-        FakeResponse({"query": {"backlinks": [{"title": "A"}, {"title": "Talk:B"}]}})
-    )
-    assert build(settings, session).backlinks(["X"]) == {"X": ["A"]}
+def linkshere_payload(title: str, titles: list[str]) -> dict:
+    return {
+        "query": {
+            "pages": {
+                "1": {"title": title, "linkshere": [{"title": t} for t in titles]}
+            }
+        }
+    }
+
+
+def test_reads_backlinks_from_linkshere(settings):
+    session = FakeSession(FakeResponse(linkshere_payload("X", ["A", "B"])))
+
+    assert build(settings, session).backlinks(["X"]) == {"X": ["A", "B"]}
+    assert session.requests[0]["prop"] == "linkshere"
+    assert session.requests[0]["lhnamespace"] == 0
 
 
 # --- Pagination -----------------------------------------------------------
@@ -203,7 +214,7 @@ def test_reports_cached_pages_to_the_progress_callback_too(settings, store):
 
 def test_forward_and_backward_caches_do_not_collide(settings, store):
     store.set("wiki_links:X", ["forward-only"])
-    session = FakeSession(FakeResponse({"query": {"backlinks": [{"title": "B"}]}}))
+    session = FakeSession(FakeResponse(linkshere_payload("X", ["B"])))
 
     assert build(settings, session, cache=store).backlinks(["X"]) == {"X": ["B"]}
 
@@ -229,7 +240,21 @@ def test_respects_retry_after_on_rate_limiting(settings, monkeypatch):
     )
     build(settings, session).links(["P"])
 
-    assert slept == [7]
+    assert slept == [pytest.approx(7, abs=0.5)]
+
+
+def test_a_rate_limit_pauses_every_thread_not_just_the_one_throttled(
+    settings, monkeypatch
+):
+    """Six threads each walking into the same 429 wastes requests and time."""
+    slept: list[float] = []
+    monkeypatch.setattr("app.wikipedia.time.sleep", slept.append)
+    client = build(settings, FakeSession())
+
+    client._pause(5)
+    client._await_rate_slot()  # any thread's next request
+
+    assert slept == [pytest.approx(5, abs=0.5)]
 
 
 def test_retries_network_failures(settings, monkeypatch):

@@ -58,7 +58,10 @@ class Settings:
 
     # Wikipedia API
     wikipedia_timeout: int = 15
-    wikipedia_workers: int = 3
+    wikipedia_workers: int = 6
+    """Concurrent requests per search. Search time is request latency times
+    requests in flight; 3 -> 6 measured 1.3x faster with no extra throttling
+    (scripts/benchmark.py). The request delay below still caps the rate."""
     wikipedia_max_pages: int = 3
     """Pagination requests per article — 3 covers up to 1,500 links."""
     wikipedia_request_delay: float = 0.1

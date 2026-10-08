@@ -1,9 +1,15 @@
 """Wikipedia API client: link/backlink lookups and page metadata.
 
-Forward links and backlinks differ only in which query parameters are sent and
-which part of the response holds the titles, so both are expressed as a
+Forward links (``prop=links``) and backlinks (``prop=linkshere``) are the same
+query shape with a different property, so both are expressed as a
 ``LinkQuery`` and share one paginating fetcher, one thread pool and one cache
 path.
+
+Each page is its own request, run in parallel across the worker pool. Asking
+for many titles per request was measured and rejected: the API caps a response
+at 500 links however many titles it covers, and the pages a search touches
+usually have more than that, so batching saved few requests while serialising
+the continuations it did need (scripts/benchmark.py).
 """
 
 from __future__ import annotations
@@ -27,16 +33,13 @@ logger = logging.getLogger(__name__)
 API_URL = "https://en.wikipedia.org/w/api.php"
 USER_AGENT = "Iris-Wikipedia-Pathfinder/1.0 (https://github.com/mdhishaamakhtar/iris)"
 
+ARTICLE_NAMESPACE = 0
+"""Articles only. Filtering server-side keeps Category:, File: and Template:
+links out of the 500-link allowance, and keeps titles that merely contain a
+colon ("Star Wars: Episode IV – A New Hope") in."""
+
 PageFetched = Callable[[str, list[str]], None]
 """Called with (title, titles-found) as each page arrives. Runs on worker threads."""
-
-
-def _is_article(title: str) -> bool:
-    """Namespaced titles (Category:, File:, Help:…) are not articles.
-
-    "List of…" pages are ordinary articles that happen to contain a colon.
-    """
-    return ":" not in title or title.startswith("List of")
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,10 +54,9 @@ class LinkQuery:
     """One of the two directions the graph can be walked in."""
 
     cache_prefix: str
-    title_param: str
+    prop: str
     params: dict[str, str | int]
     continue_key: str
-    extract: Callable[[dict[str, Any], str], list[str]]
 
 
 def resolve_title(query: dict[str, Any], title: str) -> str:
@@ -76,46 +78,36 @@ def resolve_title(query: dict[str, Any], title: str) -> str:
     return title
 
 
-def _extract_links(query: dict[str, Any], title: str) -> list[str]:
-    """Pull outgoing links out of a ``prop=links`` response.
+def _extract(query: dict[str, Any], prop: str, title: str) -> list[str]:
+    """Pull one page's links out of a ``prop=links`` or ``prop=linkshere`` response.
 
     The API answers under the resolved title, so redirects and normalisations
     are followed back to the title that was asked for.
     """
     resolved = resolve_title(query, title)
-
     for page in query.get("pages", {}).values():
         if page.get("title") == resolved and "missing" not in page:
-            return [
-                link["title"]
-                for link in page.get("links", [])
-                if _is_article(link["title"])
-            ]
+            return [link["title"] for link in page.get(prop, [])]
     return []
-
-
-def _extract_backlinks(query: dict[str, Any], _title: str) -> list[str]:
-    return [
-        entry["title"]
-        for entry in query.get("backlinks", [])
-        if _is_article(entry["title"])
-    ]
 
 
 FORWARD = LinkQuery(
     cache_prefix="wiki_links",
-    title_param="titles",
-    params={"prop": "links", "pllimit": "max"},
+    prop="links",
+    params={"prop": "links", "pllimit": "max", "plnamespace": ARTICLE_NAMESPACE},
     continue_key="plcontinue",
-    extract=_extract_links,
 )
 
 BACKWARD = LinkQuery(
     cache_prefix="wiki_backlinks",
-    title_param="bltitle",
-    params={"list": "backlinks", "bllimit": "max", "blnamespace": 0},
-    continue_key="blcontinue",
-    extract=_extract_backlinks,
+    prop="linkshere",
+    params={
+        "prop": "linkshere",
+        "lhlimit": "max",
+        "lhnamespace": ARTICLE_NAMESPACE,
+        "lhprop": "title",
+    },
+    continue_key="lhcontinue",
 )
 
 
@@ -160,6 +152,7 @@ class WikipediaClient:
         self.session.headers["User-Agent"] = USER_AGENT
         self._rate_lock = threading.Lock()
         self._last_request = 0.0
+        self._paused_until = 0.0
 
     # --- Public API -------------------------------------------------------
 
@@ -292,11 +285,11 @@ class WikipediaClient:
 
     def _fetch_one(self, query: LinkQuery, title: str) -> list[str]:
         """Fetch one page, following continuations up to the configured limit."""
-        params: dict[str, str | int] = {query.title_param: title, **query.params}
+        params: dict[str, str | int] = {"titles": title, **query.params}
         found: list[str] = []
         for _ in range(self.settings.wikipedia_max_pages):
             response = self._request(params)
-            found.extend(query.extract(response.get("query", {}), title))
+            found.extend(_extract(response.get("query", {}), query.prop, title))
             if "continue" not in response:
                 break
             params |= {
@@ -344,26 +337,37 @@ class WikipediaClient:
                 "wikipedia_retry",
                 extra={"attempt": attempt + 1, "wait": backoff, "error": last_error},
             )
-            time.sleep(backoff)
+            if last_error == "rate limited":
+                # Throttling applies to the client, not this request: hold
+                # every thread back, or the others walk into the same 429.
+                self._pause(backoff)
+            else:
+                time.sleep(backoff)
 
         raise WikipediaAPIError(
             f"Wikipedia API failed after {attempts} attempts: {last_error}"
         )
 
+    def _pause(self, seconds: float) -> None:
+        """Stop every thread from requesting until ``seconds`` from now."""
+        with self._rate_lock:
+            self._paused_until = max(self._paused_until, time.monotonic() + seconds)
+
     def _await_rate_slot(self) -> None:
-        """Hold every thread to one request per ``wikipedia_request_delay``.
+        """Hold every thread to one request per ``wikipedia_request_delay``,
+        and to any pause a 429 imposed.
 
         The lock is held across the sleep so a second thread cannot slip in and
         start its own request before the interval has elapsed.
         """
-        if self.settings.wikipedia_request_delay <= 0:
-            return
         with self._rate_lock:
-            overdue = self.settings.wikipedia_request_delay - (
-                time.monotonic() - self._last_request
+            now = time.monotonic()
+            wait = max(
+                self._paused_until - now,
+                self.settings.wikipedia_request_delay - (now - self._last_request),
             )
-            if overdue > 0:
-                time.sleep(overdue)
+            if wait > 0:
+                time.sleep(wait)
             self._last_request = time.monotonic()
 
 
