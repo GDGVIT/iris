@@ -48,7 +48,7 @@ The implementation is itself part of the point. The project stands as a demonstr
 - Name: **Iris**; full title "Iris: Wikipedia Path Finder".
 - Existing identity assets, all in `static/`: `logo.svg`, `favicon-dark.svg` / `favicon-light.svg` (switched on `prefers-color-scheme`), `og-image.svg` / `og-image.png`.
 - The GitHub-dark palette and JetBrains Mono are binding: the README and OG image are built on them, so a change to the theme is a change to published assets.
-- MIT licensed, open source at `github.com/mdhishaamakhtar/iris`.
+- GPL-3.0 licensed (see `LICENSE`), open source at `github.com/mdhishaamakhtar/iris`.
 - Built by Md Hishaam Akhtar and Sharanya Mukherjee under DSC VIT; the README carries that attribution.
 
 ## Evidence on Hand

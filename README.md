@@ -36,7 +36,7 @@ It uses **bidirectional BFS** (default) which searches simultaneously from both 
 [![uv](https://img.shields.io/badge/uv-package%20manager-D7FF64?style=for-the-badge&logo=astral&logoColor=black)](https://github.com/astral-sh/uv)
 [![Ruff](https://img.shields.io/badge/Ruff-lint%20%2B%20format-D7FF64?style=for-the-badge&logo=ruff&logoColor=black)](https://github.com/astral-sh/ruff)
 [![ty](https://img.shields.io/badge/ty-type%20checker-D7FF64?style=for-the-badge&logo=astral&logoColor=black)](https://github.com/astral-sh/ty)
-[![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](./LICENSE)
+[![License](https://img.shields.io/badge/License-GPL--3.0-blue?style=for-the-badge)](./LICENSE)
 
 ## Quick Start
 
