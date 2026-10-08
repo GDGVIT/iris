@@ -33,7 +33,7 @@
         />
         <link rel="stylesheet" href="/static/styles.css" />
         <!-- defer: downloads in parallel with HTML parsing, executes after parse completes -->
-        <script src="https://d3js.org/d3.v7.min.js" defer></script>
+        <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" defer></script>
         <script>
             // Dynamic favicon switching for Chrome compatibility
             function updateFavicon() {
@@ -169,21 +169,18 @@
                     <button
                         id="findPathBtn"
                         class="btn btn-primary"
-                        onclick="findPath()"
                     >
                         Find Path
                     </button>
                     <button
                         id="cancelBtn"
                         class="btn btn-cancel hidden"
-                        onclick="cancelSearch()"
                     >
                         Cancel Search
                     </button>
                     <button
                         id="clearBtn"
                         class="btn btn-secondary"
-                        onclick="clearVisualization()"
                     >
                         Clear
                     </button>
@@ -196,62 +193,6 @@
 
             <div class="visualization-section" id="visualizationSection">
                 <div class="graph-container" id="graphContainer">
-                    <div class="graph-loader" id="graphLoader">
-                        <div class="graph-loader-animation">
-                            <svg
-                                class="loader-net"
-                                viewBox="0 0 140 80"
-                                width="140"
-                                height="80"
-                                aria-hidden="true"
-                            >
-                                <!-- <path> + real dash lengths: mobile Safari
-                                     ignores pathLength on <line> elements -->
-                                <path
-                                    class="ln-edge ln-e-a"
-                                    d="M27,38 L65,21"
-                                />
-                                <path
-                                    class="ln-edge ln-e-a"
-                                    d="M27,42 L65,59"
-                                />
-                                <path
-                                    class="ln-edge ln-e-b"
-                                    d="M75,21 L113,38"
-                                />
-                                <path
-                                    class="ln-edge ln-e-b"
-                                    d="M75,59 L113,42"
-                                />
-                                <circle
-                                    class="ln-node ln-start"
-                                    cx="22"
-                                    cy="40"
-                                    r="5"
-                                />
-                                <circle
-                                    class="ln-node ln-mid"
-                                    cx="70"
-                                    cy="19"
-                                    r="4"
-                                />
-                                <circle
-                                    class="ln-node ln-mid"
-                                    cx="70"
-                                    cy="61"
-                                    r="4"
-                                />
-                                <circle
-                                    class="ln-node ln-end"
-                                    cx="118"
-                                    cy="40"
-                                    r="5"
-                                />
-                            </svg>
-                        </div>
-                        <div>Building your path visualization...</div>
-                    </div>
-
                     <div class="search-progress hidden" id="searchProgress">
                         <div class="search-progress-header">
                             <span>Searching for path:</span>
@@ -289,7 +230,7 @@
                             </div>
                             <div class="search-stat">
                                 <div class="stat-label">Queue Size</div>
-                                <div class="stat-value" id="queueSize">1</div>
+                                <div class="stat-value" id="queueSize">0</div>
                             </div>
                             <div class="search-stat">
                                 <div class="stat-label">Elapsed Time</div>
@@ -306,9 +247,6 @@
                                     id="lastNode"
                                     role="button"
                                     tabindex="-1"
-                                    onclick="
-                                        openWikipediaPage(this.textContent)
-                                    "
                                 >
                                     -
                                 </div>

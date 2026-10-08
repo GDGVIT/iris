@@ -407,155 +407,6 @@ header p {
     display: block;
 }
 
-/* Graph Loader */
-.graph-loader {
-    position: absolute;
-    inset: var(--graph-pad);
-    transform: none;
-    text-align: center;
-    color: var(--text-secondary);
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-secondary);
-    border-radius: var(--radius-md);
-    padding: 32px;
-    width: auto;
-    max-width: none;
-    min-height: initial;
-    box-sizing: border-box;
-    z-index: 10;
-}
-
-/* Graph loader animation container (for dots) */
-.graph-loader-animation {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    margin-bottom: 16px;
-}
-
-/* Mini BFS network: edges draw outward from the start node through the
-   middle layer into the end node, then the cycle fades and repeats */
-/* Each edge is ~41.6px long; 42 covers it for the dash-draw effect */
-.loader-net .ln-edge {
-    stroke: var(--accent-blue);
-    stroke-width: 1.5;
-    stroke-linecap: round;
-    fill: none;
-    stroke-dasharray: 42;
-    stroke-dashoffset: 42;
-}
-
-.loader-net .ln-e-a {
-    animation: ln-draw-a 2.4s ease-out infinite;
-}
-
-.loader-net .ln-e-b {
-    animation: ln-draw-b 2.4s ease-out infinite;
-}
-
-.loader-net .ln-node {
-    transform-box: fill-box;
-    transform-origin: center;
-}
-
-.loader-net .ln-start {
-    fill: var(--success-green);
-}
-
-.loader-net .ln-mid {
-    fill: var(--accent-blue);
-    animation: ln-pop-mid 2.4s ease-out infinite;
-}
-
-.loader-net .ln-end {
-    fill: var(--danger-red);
-    animation: ln-pop-end 2.4s ease-out infinite;
-}
-
-@keyframes ln-draw-a {
-    0% {
-        stroke-dashoffset: 42;
-        opacity: 1;
-    }
-    20% {
-        stroke-dashoffset: 0;
-        opacity: 1;
-    }
-    80% {
-        stroke-dashoffset: 0;
-        opacity: 1;
-    }
-    94%,
-    100% {
-        stroke-dashoffset: 0;
-        opacity: 0;
-    }
-}
-
-@keyframes ln-draw-b {
-    0%,
-    24% {
-        stroke-dashoffset: 42;
-        opacity: 1;
-    }
-    46% {
-        stroke-dashoffset: 0;
-        opacity: 1;
-    }
-    80% {
-        stroke-dashoffset: 0;
-        opacity: 1;
-    }
-    94%,
-    100% {
-        stroke-dashoffset: 0;
-        opacity: 0;
-    }
-}
-
-@keyframes ln-pop-mid {
-    0%,
-    14% {
-        transform: scale(0);
-        opacity: 1;
-    }
-    28% {
-        transform: scale(1);
-        opacity: 1;
-    }
-    80% {
-        transform: scale(1);
-        opacity: 1;
-    }
-    94%,
-    100% {
-        transform: scale(1);
-        opacity: 0;
-    }
-}
-
-@keyframes ln-pop-end {
-    0%,
-    40% {
-        transform: scale(0);
-        opacity: 1;
-    }
-    56% {
-        transform: scale(1);
-        opacity: 1;
-    }
-    80% {
-        transform: scale(1);
-        opacity: 1;
-    }
-    94%,
-    100% {
-        transform: scale(1);
-        opacity: 0;
-    }
-}
-
 /* Search Progress Display */
 .search-progress {
     background: var(--bg-secondary);
@@ -744,12 +595,6 @@ header p {
         width: auto;
         max-width: none;
     }
-    .graph-loader {
-        padding: 20px;
-        width: auto;
-        max-width: none;
-    }
-
     .search-stats {
         grid-template-columns: 1fr;
         gap: 16px;
@@ -768,10 +613,6 @@ header p {
         gap: 20px;
         justify-content: center;
     }
-    .graph-loader {
-        padding: 14px;
-    }
-
     .search-progress-header {
         font-size: 14px;
         margin-bottom: 0;
@@ -1084,15 +925,6 @@ header p {
 
     .visualization-section.show {
         animation: none;
-    }
-
-    /* Show the loader network fully drawn instead of mid-animation */
-    .loader-net .ln-edge,
-    .loader-net .ln-node {
-        animation: none !important;
-        stroke-dashoffset: 0;
-        opacity: 1;
-        transform: none;
     }
 
     /* Loading must stay perceivable. The global rule above freezes every
