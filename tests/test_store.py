@@ -70,21 +70,6 @@ def test_queue_pop_of_nothing_touches_nothing(store, count):
     assert store.queue_length("q") == 1
 
 
-def test_clear_pattern_deletes_only_matching_keys(store):
-    for key in ("bfs:1:forward:queue", "bfs:2:backward:visited", "wiki_links:Python"):
-        store.set(key, "x")
-
-    assert store.clear_pattern("bfs:*") == 2
-    assert store.get("wiki_links:Python") == "x"
-
-
-def test_clear_pattern_handles_more_keys_than_one_scan_batch(store):
-    for i in range(1200):
-        store.set(f"bfs:{i}", i)
-
-    assert store.clear_pattern("bfs:*") == 1200
-
-
 def test_expire_sets_a_deadline_on_an_existing_key(store):
     store.set_add("visited", "A")
     store.expire("visited", 30)

@@ -77,9 +77,7 @@ def test_gives_up_beyond_the_depth_limit(wikipedia, store, settings, algorithm):
 def test_deletes_all_search_state_when_done(finder, store, algorithm):
     finder.find("Python", "Mathematics", algorithm)
 
-    assert store.clear_pattern("bfs:*") == 0, (
-        "per-search keys must not outlive the search"
-    )
+    assert not store._redis.keys("bfs:*"), "per-search keys must not outlive the search"
 
 
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
@@ -87,7 +85,7 @@ def test_deletes_search_state_even_when_no_path_is_found(finder, store, algorith
     with pytest.raises(PathNotFoundError):
         finder.find("Python", "Orphan", algorithm)
 
-    assert store.clear_pattern("bfs:*") == 0
+    assert not store._redis.keys("bfs:*")
 
 
 @pytest.mark.parametrize("algorithm", ALGORITHMS)

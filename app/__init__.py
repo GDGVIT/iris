@@ -14,7 +14,6 @@ import uuid
 from dataclasses import dataclass
 
 from celery import Celery
-from celery.signals import after_setup_logger, after_setup_task_logger
 from flasgger import Swagger
 from flask import Flask, Response, current_app, g, jsonify, request
 from marshmallow import ValidationError
@@ -22,7 +21,7 @@ from werkzeug.exceptions import HTTPException
 
 from app.config import Settings
 from app.errors import ErrorCode, IrisError
-from app.log import configure_logging, json_handler
+from app.log import configure_logging
 from app.store import RedisStore
 from app.wikipedia import WikipediaClient, WikipediaSource
 
@@ -80,7 +79,6 @@ def create_app(settings: Settings | None = None) -> Flask:
         DEBUG=settings.debug,
         TESTING=settings.testing,
         MAX_CONTENT_LENGTH=1024 * 1024,
-        JSON_SORT_KEYS=False,
     )
 
     configure_logging(app, settings)
@@ -117,7 +115,7 @@ def _register_hooks(app: Flask) -> None:
     def finish_request(response: Response) -> Response:
         response.headers["Access-Control-Allow-Origin"] = "*"
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
         if request.path.startswith(("/static/", "/flasgger_static/")):
             return response
         logger.info("request_completed", extra={"http_status": response.status_code})
@@ -182,17 +180,6 @@ def _configure_celery(app: Flask, settings: Settings) -> None:
         # Keep our root-logger JSON handlers instead of Celery's plain text.
         worker_hijack_root_logger=False,
     )
-
-    def use_json_logging(logger: logging.Logger, **_: object) -> None:
-        for handler in logger.handlers:
-            json_handler(handler, handler.level)
-
-    after_setup_logger.connect(use_json_logging)
-    after_setup_task_logger.connect(use_json_logging)
-
-    from app.tasks import register_schedule
-
-    register_schedule(celery)
 
     class AppContextTask(celery.Task):
         """Runs every task inside the Flask app context."""
