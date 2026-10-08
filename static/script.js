@@ -11,7 +11,12 @@ const VERTICAL_SPACING = 92;
 const SEED_PAD_X = 70;
 const NODE_R = 14;
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+
 const $ = (id) => document.getElementById(id);
+
+const formatSeconds = (seconds) =>
+  Number.isFinite(seconds) ? `${seconds.toFixed(1)} s` : "—";
 
 const wikipediaUrl = (page) =>
   `https://en.wikipedia.org/wiki/${encodeURIComponent(page)}`;
@@ -92,6 +97,83 @@ function debounce(fn, wait) {
   };
 }
 
+// Turn any failure into what the visitor needs: what happened, which field
+// (if one is at fault), and what to try next. Server messages are shown only
+// when they are written for people; internal ones stay in the server logs.
+function describeFailure({ code, message, details }, route) {
+  const quoted = (title) =>
+    Boolean(title) &&
+    (message || "").toLowerCase().includes(`'${title.toLowerCase()}'`);
+
+  switch (code) {
+    case "PAGE_NOT_FOUND": {
+      const field = quoted(route.start) ? "start" : "end";
+      return {
+        title: field === "start" ? "Start page not found" : "End page not found",
+        message: `English Wikipedia has no article titled “${route[field]}”.`,
+        hint: "Check the spelling, or copy the title from the end of the article’s URL.",
+        field,
+      };
+    }
+    case "DISAMBIGUATION_PAGE":
+      return {
+        title: "End page is ambiguous",
+        message: `“${route.end}” is a disambiguation page that lists several articles, so there is no single page to reach.`,
+        hint: "Pick the specific article, for example “Mercury (planet)” rather than “Mercury”.",
+        field: "end",
+      };
+    case "PATH_NOT_FOUND": {
+      const depth = /within (\d+) steps/.exec(message || "")?.[1];
+      return {
+        title: "No route found",
+        message: depth
+          ? `The two searches went ${depth} links deep in total without meeting.`
+          : "The two searches ran out of pages without meeting.",
+        hint: "Try a more general end page. Pages with few incoming links are hard to reach.",
+      };
+    }
+    case "INVALID_REQUEST": {
+      const [field, problems] = Object.entries(details || {})[0] || [];
+      return {
+        title: "Check the two pages",
+        message: (Array.isArray(problems) && problems[0]) || message,
+        field: field === "start" || field === "end" ? field : undefined,
+      };
+    }
+    case "WIKIPEDIA_API_ERROR":
+      return {
+        title: "Wikipedia isn’t responding",
+        hint: "This is usually brief. Try again in a minute.",
+        retry: true,
+      };
+    case "TIMEOUT":
+      return {
+        title: "The search took too long",
+        hint: "Searches stop after ten minutes. Try two pages that are more closely related.",
+        retry: true,
+      };
+    case "OFFLINE":
+      return {
+        title: "Can’t reach Iris",
+        hint: "Check your connection, then try again.",
+        retry: true,
+      };
+    case "STOPPED":
+      return {
+        title: "Search stopped",
+        hint: "Nothing was found before it stopped. Run it again whenever you like.",
+        retry: true,
+        neutral: true,
+      };
+    default:
+      return {
+        title: "Something went wrong on our side",
+        hint: "Try again. If it keeps happening, the search service may be down.",
+        retry: true,
+      };
+  }
+}
+
 class PathFinderUI {
   constructor() {
     this.taskId = null;
@@ -125,32 +207,22 @@ class PathFinderUI {
   }
 
   setupEventListeners() {
-    $("findPathBtn").addEventListener("click", () => this.findPath());
+    $("route").addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (!$("findPathBtn").disabled) this.findPath();
+    });
     $("cancelBtn").addEventListener("click", () => this.cancelSearch());
     $("clearBtn").addEventListener("click", () => this.clearVisualization());
+    $("retryBtn").addEventListener("click", () => this.findPath());
+    $("dismissBtn").addEventListener("click", () => this.hideNotice());
 
     for (const id of ["startPage", "endPage"]) {
-      $(id).addEventListener("keypress", (e) => {
-        if (e.key === "Enter") this.findPath();
-      });
-      // Auto-save state and update button state on input changes
       $(id).addEventListener("input", () => {
+        $(id).removeAttribute("aria-invalid");
         this.saveCurrentState();
         this.updateButtonState();
       });
     }
-
-    // "Currently Exploring" opens the page; keyboard-activatable when enabled
-    const lastNode = $("lastNode");
-    lastNode.addEventListener("click", () =>
-      openWikipediaPage(lastNode.textContent.trim()),
-    );
-    lastNode.addEventListener("keydown", (e) => {
-      if (e.key !== "Enter" && e.key !== " ") return;
-      if (lastNode.classList.contains("disabled")) return;
-      e.preventDefault();
-      openWikipediaPage(lastNode.textContent.trim());
-    });
 
     window.addEventListener(
       "resize",
@@ -195,21 +267,18 @@ class PathFinderUI {
     });
   }
 
+  route() {
+    return {
+      start: $("startPage").value.trim(),
+      end: $("endPage").value.trim(),
+    };
+  }
+
   updateButtonState() {
-    const startPage = $("startPage").value.trim();
-    const endPage = $("endPage").value.trim();
-    const saved = StateManager.load();
-
-    // Disabled while a search runs, while either field is empty, and while
-    // the inputs still match the result already on screen.
-    const showingThisResult =
-      saved?.status === "COMPLETED" &&
-      saved.result &&
-      startPage === saved.startPage &&
-      endPage === saved.endPage;
-
-    $("findPathBtn").disabled =
-      Boolean(this.taskId) || !startPage || !endPage || showingThisResult;
+    const { start, end } = this.route();
+    // Disabled only while a search runs or a field is empty. Re-running the
+    // route on screen is allowed: it is answered from the path cache.
+    $("findPathBtn").disabled = Boolean(this.taskId) || !start || !end;
   }
 
   clearActiveTask() {
@@ -228,57 +297,87 @@ class PathFinderUI {
   }
 
   showLoading() {
-    // Swap find path → cancel
+    // Swap find path → stop
     $("findPathBtn").classList.add("hidden");
     $("cancelBtn").classList.remove("hidden");
-    $("error").classList.add("hidden");
+    this.hideNotice();
   }
 
   hideLoading() {
-    // Swap cancel → find path
     $("cancelBtn").classList.add("hidden");
     $("findPathBtn").classList.remove("hidden");
     this.updateButtonState();
   }
 
-  showError(message) {
+  showNotice({ title, message, hint, field, retry, neutral }) {
     this.hideLoading();
-    $("error").classList.remove("hidden");
-    $("errorMessage").textContent = message;
+    const notice = $("notice");
+    notice.classList.toggle("is-neutral", Boolean(neutral));
+    $("noticeTitle").textContent = title;
+    $("noticeMessage").textContent = message || "";
+    $("noticeHint").textContent = hint || "";
+    $("retryBtn").classList.toggle("hidden", !retry);
+
+    // Restart the entrance so a repeated error still reads as new
+    notice.classList.add("hidden");
+    void notice.offsetWidth;
+    notice.classList.remove("hidden");
+
+    for (const [name, id] of [
+      ["start", "startPage"],
+      ["end", "endPage"],
+    ]) {
+      if (name === field) $(id).setAttribute("aria-invalid", "true");
+      else $(id).removeAttribute("aria-invalid");
+    }
+    if (field) $(field === "start" ? "startPage" : "endPage").focus();
   }
 
-  // End the current search and show why. Every failure path ends here.
-  fail(message) {
+  hideNotice() {
+    $("notice").classList.add("hidden");
+  }
+
+  // End the current search and explain why. Every failure path ends here.
+  fail(failure) {
+    const route = this.route();
     this.clearActiveTask();
-    this.hideLoading();
     $("visualizationSection").classList.remove("show");
-    this.showError(message);
     StateManager.clear();
+    this.saveCurrentState(); // keep what was typed
+    this.showNotice(describeFailure(failure, route));
   }
 
   showVisualizationSection() {
     $("visualizationSection").classList.add("show");
-    // Show the progress panel immediately to avoid flicker
     this.showProgressLoader();
     this.resetProgressUI();
   }
 
+  setRoute(start, end) {
+    $("routeFrom").textContent = start || "—";
+    $("routeTo").textContent = end || "—";
+    $("waitFrom").textContent = start || "—";
+    $("waitTo").textContent = end || "—";
+  }
+
+  // Searching: readings and the two-ended wait scene; no graph yet
   showProgressLoader() {
-    $("graphContainer").classList.add("loading");
-    $("searchProgress").classList.remove("hidden");
+    for (const id of ["activity", "searchProgress", "waitScene"]) {
+      $(id).classList.remove("hidden");
+    }
     $("graph").classList.add("hidden");
+    $("runState").dataset.state = "searching";
+    $("runState").textContent = "Searching";
   }
 
   resetProgressUI() {
-    // Ensure header matches current inputs
-    const startPage = $("startPage").value.trim() || "-";
-    const endPage = $("endPage").value.trim() || "-";
-    $("searchPath").textContent = `${startPage} → ${endPage}`;
+    const { start, end } = this.route();
+    this.setRoute(start, end);
 
     $("nodesExplored").textContent = "0";
     $("queueSize").textContent = "0";
-    $("elapsedTime").textContent = "0s";
-    this.setLastNode("-");
+    $("elapsedTime").textContent = formatSeconds(0);
+    this.setLastNode(null);
 
     // Reset depth. The real budget arrives with the first progress update;
     // until then keep whatever count is already rendered.
@@ -287,23 +386,26 @@ class PathFinderUI {
 
   setLastNode(title) {
     const el = $("lastNode");
-    const openable = Boolean(title) && title !== "-";
-    el.textContent = title || "-";
-    el.classList.toggle("disabled", !openable);
-    el.setAttribute("tabindex", openable ? "0" : "-1");
-    el.setAttribute("aria-disabled", String(!openable));
+    el.textContent = title || "—";
+    el.classList.toggle("disabled", !title);
+    el.setAttribute("aria-disabled", String(!title));
+    el.setAttribute("tabindex", title ? "0" : "-1");
+    if (title) el.href = wikipediaUrl(title);
+    else el.removeAttribute("href");
   }
 
   updateProgressDisplay(progress) {
     const stats = progress?.search_stats;
     if (!stats) return;
 
-    $("searchPath").textContent = `${stats.start_page} → ${stats.end_page}`;
+    this.setRoute(stats.start_page, stats.end_page);
     this.updateDepthIndicator(stats.current_depth || 0, stats.max_depth || 6);
     $("nodesExplored").textContent =
       stats.nodes_explored?.toLocaleString() || "0";
     $("queueSize").textContent = stats.queue_size?.toLocaleString() || "0";
-    $("elapsedTime").textContent = `${progress.search_time_elapsed || 0}s`;
+    $("elapsedTime").textContent = formatSeconds(
+      progress.search_time_elapsed || 0,
+    );
     this.setLastNode(stats.last_node);
   }
 
@@ -316,7 +418,7 @@ class PathFinderUI {
       container.lastElementChild.remove();
     }
     while (container.children.length < total) {
-      const dot = document.createElement("div");
+      const dot = document.createElement("span");
       dot.className = "depth-dot";
       container.appendChild(dot);
     }
@@ -327,25 +429,28 @@ class PathFinderUI {
     });
   }
 
+  // Found: the readings give way to the graph
   showGraphVisualization() {
-    $("graphContainer").classList.remove("loading");
-    $("searchProgress").classList.add("hidden");
+    for (const id of ["activity", "searchProgress", "waitScene"]) {
+      $(id).classList.add("hidden");
+    }
     $("graph").classList.remove("hidden");
   }
 
   hidePathDisplay() {
     $("pathStepsContainer").classList.add("hidden");
-    $("searchProgress").classList.add("hidden");
     this.graph.svg.selectAll("*").remove();
-    $("graphContainer").classList.add("loading");
   }
 
   async findPath() {
-    const startPage = $("startPage").value.trim();
-    const endPage = $("endPage").value.trim();
+    const { start, end } = this.route();
 
-    if (!startPage || !endPage) {
-      this.showError("Please enter both start and end pages");
+    if (!start || !end) {
+      this.showNotice({
+        title: "Enter both pages",
+        hint: "Iris needs a page to start from and a page to reach.",
+        field: start ? "end" : "start",
+      });
       return;
     }
 
@@ -361,18 +466,23 @@ class PathFinderUI {
       const response = await fetch(`${API_BASE}/getPath`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ start: startPage, end: endPage }),
+        body: JSON.stringify({ start, end }),
         signal: this.abortController.signal,
       });
 
       if (!response.ok) {
-        let message = `HTTP ${response.status}`;
+        let body = {};
         try {
-          message = (await response.json()).message || message;
+          body = await response.json();
         } catch {
           /* non-JSON response */
         }
-        throw new Error(message);
+        this.fail({
+          code: body.code,
+          message: body.message,
+          details: body.details,
+        });
+        return;
       }
 
       const data = await response.json();
@@ -382,7 +492,7 @@ class PathFinderUI {
       this.pollTaskStatus();
     } catch (error) {
       if (error.name === "AbortError") return;
-      this.fail(`Failed to start pathfinding: ${error.message}`);
+      this.fail({ code: "OFFLINE" });
     }
   }
 
@@ -393,8 +503,11 @@ class PathFinderUI {
     const taskId = this.taskId;
     if (!taskId) return;
 
-    if (this.taskStartTime && Date.now() - this.taskStartTime > MAX_TASK_POLL_MS) {
-      this.fail("Search timed out. Please try again.");
+    if (
+      this.taskStartTime &&
+      Date.now() - this.taskStartTime > MAX_TASK_POLL_MS
+    ) {
+      this.fail({ code: "TIMEOUT" });
       return;
     }
 
@@ -413,9 +526,8 @@ class PathFinderUI {
 
       switch (data.status) {
         case "PENDING":
-          // Waiting for a worker; header already shows start → end
+          // Waiting for a worker; the route is already on screen
           this.showProgressLoader();
-          this.resetProgressUI();
           pollAgain(1000);
           break;
 
@@ -430,15 +542,15 @@ class PathFinderUI {
           break;
 
         case "FAILURE":
-          this.fail(data.error || "Task failed");
+          this.fail({ code: data.code, message: data.error });
           break;
 
         case "REVOKED":
-          this.fail("Search was cancelled.");
+          this.fail({ code: "STOPPED" });
           break;
 
         default:
-          this.fail(`Unknown task status: ${data.status}`);
+          this.fail({});
       }
     } catch (error) {
       if (error.name === "AbortError") return;
@@ -451,7 +563,7 @@ class PathFinderUI {
         pollAgain(2000, errors);
         return;
       }
-      this.fail("Lost connection to server. Please try again.");
+      this.fail({ code: "OFFLINE" });
     }
   }
 
@@ -459,7 +571,7 @@ class PathFinderUI {
     this.hideLoading();
 
     if (!result?.path?.length) {
-      this.fail("No path found between the pages");
+      this.fail({ code: "PATH_NOT_FOUND" });
       return;
     }
 
@@ -468,9 +580,14 @@ class PathFinderUI {
     state.status = "COMPLETED";
     StateManager.save(state);
 
+    const path = result.path;
+    this.setRoute(path[0], path[path.length - 1]);
+    $("runState").dataset.state = "found";
+    $("runState").textContent = `Found in ${formatSeconds(result.search_time)}`;
+
     this.showGraphVisualization();
-    this.visualizePath(result.path);
-    this.displayPathList(result.path, result);
+    this.visualizePath(path);
+    this.displayPathList(path, result);
 
     // Completed: release the task without aborting anything
     this.taskId = null;
@@ -796,7 +913,12 @@ class PathFinderUI {
       const dist = Math.hypot(dx, dy) || 1;
       const ux = dx / dist;
       const uy = dy / dist;
-      const sOff = NODE_R + 3;
+      // Stacked vertically, each label chip hangs below its node; start the
+      // edge under the chip so the arrow never runs beneath the text.
+      const sOff =
+        vertical && uy > 0.5
+          ? Math.min((18 + d.source.boxHeight + 6) / uy, dist - NODE_R - 16)
+          : NODE_R + 3;
       const tOff = NODE_R + 4;
       return `M${d.source.x + ux * sOff},${d.source.y + uy * sOff} L${d.target.x - ux * tOff},${d.target.y - uy * tOff}`;
     };
@@ -926,43 +1048,58 @@ class PathFinderUI {
   }
 
   displayPathList(path, result) {
-    $("pathLength").textContent = `${path.length} steps`;
-    $("searchTime").textContent = `${result.search_time?.toFixed(2) || "N/A"}s`;
-
-    const nodesExplored =
+    const explored =
       result.search_stats?.nodes_explored || result.nodes_explored || 0;
-    $("nodesExploredStat").textContent =
-      `${nodesExplored.toLocaleString()} ${nodesExplored === 1 ? "node" : "nodes"}`;
+    const hops = path.length - 1;
 
-    const pathSteps = $("pathSteps");
-    pathSteps.replaceChildren(
+    $("routeSummary").replaceChildren(
+      ...[
+        `${hops} ${hops === 1 ? "link" : "links"}`,
+        `${path.length} pages`,
+        `${explored.toLocaleString()} explored`,
+        formatSeconds(result.search_time),
+      ].map((text) => {
+        const span = document.createElement("span");
+        span.textContent = text;
+        return span;
+      }),
+    );
+
+    $("pathSteps").replaceChildren(
       ...path.map((page, index) => {
-        const step = document.createElement("div");
-        step.className = "path-step";
-        step.setAttribute("role", "button");
-        step.setAttribute("tabindex", "0");
+        const item = document.createElement("li");
+        const step = document.createElement("a");
+        step.className = "step";
+        step.href = wikipediaUrl(page);
+        step.target = "_blank";
+        step.rel = "noopener";
         step.setAttribute(
           "aria-label",
-          `Step ${index + 1}: Open ${page} on Wikipedia`,
+          `Step ${index + 1}: ${page}, opens on Wikipedia`,
         );
-        step.addEventListener("click", () => openWikipediaPage(page));
-        step.addEventListener("keydown", (e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            openWikipediaPage(page);
-          }
-        });
 
-        const number = document.createElement("div");
-        number.className = "step-number";
-        number.textContent = index + 1;
+        const mark = document.createElement("span");
+        mark.className = "step-mark";
 
-        const title = document.createElement("div");
+        const number = document.createElement("span");
+        number.className = "step-index";
+        number.textContent = String(index + 1).padStart(2, "0");
+
+        const title = document.createElement("span");
         title.className = "step-title";
         title.textContent = page;
 
-        step.append(number, title);
-        return step;
+        const open = document.createElementNS(SVG_NS, "svg");
+        open.setAttribute("class", "step-open");
+        open.setAttribute("viewBox", "0 0 16 16");
+        open.setAttribute("aria-hidden", "true");
+        const arrow = document.createElementNS(SVG_NS, "path");
+        arrow.setAttribute("d", "M5 11l6-6M6 5h5v5");
+        open.appendChild(arrow);
+
+        step.append(mark, number, title, open);
+        item.appendChild(step);
+        return item;
       }),
     );
 
@@ -974,7 +1111,7 @@ class PathFinderUI {
     if (!taskId) return;
 
     // Update the UI synchronously, before any await
-    this.fail("Search cancelled.");
+    this.fail({ code: "STOPPED" });
 
     // Best-effort backend cancel; its resolution must not touch the UI in
     // case the user has already started a new search.
@@ -988,18 +1125,21 @@ class PathFinderUI {
   clearVisualization() {
     this.clearActiveTask();
     this.hideLoading();
+    this.hideNotice();
     StateManager.clear();
 
-    $("error").classList.add("hidden");
     $("pathStepsContainer").classList.add("hidden");
     $("visualizationSection").classList.remove("show");
     this.graph.svg.selectAll("*").remove();
     this.graph.simulation?.stop();
     this.graph.simulation = null;
 
-    $("startPage").value = "";
-    $("endPage").value = "";
+    for (const id of ["startPage", "endPage"]) {
+      $(id).value = "";
+      $(id).removeAttribute("aria-invalid");
+    }
     this.updateButtonState();
+    $("startPage").focus();
   }
 }
 

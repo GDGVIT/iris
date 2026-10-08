@@ -4,10 +4,10 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Iris: Wikipedia Path Finder</title>
-        <meta name="description" content="Find the shortest path between any two Wikipedia pages using bidirectional BFS and interactive graph visualization." />
+        <meta name="description" content="Find a hyperlink path between any two Wikipedia pages. Iris searches the live link graph from both ends and shows the search as it runs." />
         <!-- Open Graph -->
         <meta property="og:title" content="Iris: Wikipedia Path Finder" />
-        <meta property="og:description" content="Find the shortest path between any two Wikipedia pages using bidirectional BFS and interactive graph visualization." />
+        <meta property="og:description" content="Find a hyperlink path between any two Wikipedia pages. Iris searches the live link graph from both ends and shows the search as it runs." />
         <meta property="og:image" content="https://iris.hishaam.dev/static/og-image.png" />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
@@ -16,15 +16,15 @@
         <!-- Twitter -->
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content="Iris: Wikipedia Path Finder" />
-        <meta name="twitter:description" content="Find the shortest path between any two Wikipedia pages using bidirectional BFS and interactive graph visualization." />
+        <meta name="twitter:description" content="Find a hyperlink path between any two Wikipedia pages. Iris searches the live link graph from both ends and shows the search as it runs." />
         <meta name="twitter:image" content="https://iris.hishaam.dev/static/og-image.png" />
+        <meta name="theme-color" content="#0d1117" />
         <link
             rel="icon"
             type="image/svg+xml"
             href="/static/favicon-dark.svg"
             id="favicon"
         />
-        <!-- Preconnect to Google Fonts for faster font delivery -->
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link
@@ -32,24 +32,16 @@
             href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap"
         />
         <link rel="stylesheet" href="/static/styles.css" />
-        <!-- defer: downloads in parallel with HTML parsing, executes after parse completes -->
         <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" defer></script>
         <script>
-            // Dynamic favicon switching for Chrome compatibility
+            // Chrome ignores media queries on <link rel="icon">, so swap by hand
             function updateFavicon() {
-                const favicon = document.getElementById("favicon");
-                const isDarkMode = window.matchMedia(
-                    "(prefers-color-scheme: dark)",
-                ).matches;
-                favicon.href = isDarkMode
+                const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+                document.getElementById("favicon").href = dark
                     ? "/static/favicon-dark.svg"
                     : "/static/favicon-light.svg";
             }
-
-            // Update on load
             document.addEventListener("DOMContentLoaded", updateFavicon);
-
-            // Listen for theme changes
             window
                 .matchMedia("(prefers-color-scheme: dark)")
                 .addEventListener("change", updateFavicon);
@@ -57,286 +49,292 @@
     </head>
 
     <body>
-        <div class="container">
-            <header>
-                <div class="header-logo-container">
-                    <img
-                        src="/static/logo.svg"
-                        alt="Iris Logo"
-                        class="header-logo"
-                    />
-                    <h1>Iris: Wikipedia Path Finder</h1>
-                </div>
-                <p>
-                    Discover a path between any two Wikipedia pages through
-                    connected links
-                </p>
-                <div class="header-actions">
-                    <button
-                        id="toggleAboutBtn"
-                        class="link-button"
-                        aria-controls="aboutBox"
-                        aria-expanded="false"
+        <!--
+        THESIS: An instrument, not a dashboard. One column of readings ruled by
+          hairlines; no cards, no boxes inside boxes. Refuses the stacked-card
+          SaaS form the old page used.
+        OWN-WORLD: GitHub-dark ground #0d1117, 1px rules #21262d/#30363d,
+          JetBrains Mono for every figure, a faint dot field under the graph
+          framed by corner registration marks. Green = from, red = to, blue = path.
+        STORY: Read one sentence, name two pages, watch the frontier move as
+          figures, follow the route as a ruled list or a graph.
+        FIRST VIEWPORT: wordmark bar; display question at left; the route form
+          (from -> to) on underline fields directly below; primary action inline.
+        FORM: vertical instrument flow on hairline rules, candidate 4; seed 51c28c52.
+        FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+        -->
+        <a class="skip-link" href="#route">Skip to search</a>
+
+        <div class="shell">
+            <header class="masthead">
+                <a class="wordmark" href="/" aria-label="Iris home">
+                    <img src="/static/logo.svg" alt="" width="24" height="24" />
+                    <span>Iris</span>
+                </a>
+                <nav class="masthead-links" aria-label="Project">
+                    <a href="/api/docs" target="_blank" rel="noopener">API</a>
+                    <a
+                        href="https://github.com/mdhishaamakhtar/iris"
+                        target="_blank"
+                        rel="noopener"
+                        >Source</a
                     >
-                        About Iris
-                    </button>
-                </div>
+                </nav>
             </header>
 
-            <!-- About / How-To info box -->
-            <div
-                id="aboutBox"
-                class="info-box hidden"
-                role="region"
-                aria-label="About Iris and how to use it"
-            >
-                <div class="info-header">
-                    <h2 class="info-title">What is Iris? How to use</h2>
-                </div>
-                <div class="info-content">
-                    <p>
-                        <strong>Iris</strong> discovers a hyperlink path between
-                        two Wikipedia pages. Under the hood it runs a
-                        high‑performance graph search and streams live progress,
-                        then visualizes the path so you can explore how topics
-                        connect.
+            <main>
+                <section class="lead" aria-labelledby="leadTitle">
+                    <h1 id="leadTitle">
+                        How does one Wikipedia page lead to another?
+                    </h1>
+                    <p class="lead-copy">
+                        Name two pages. Iris follows their links through live
+                        Wikipedia, from both ends at once, and draws the route
+                        it finds.
                     </p>
-                    <ul class="info-list">
-                        <li>
-                            <strong>Pick pages:</strong> Enter two Wikipedia
-                            page titles (e.g., “Barack Obama” → “Mathematics”).
-                            Exact titles work best.
-                        </li>
-                        <li>
-                            <strong>Start:</strong> Click <em>Find Path</em>.
-                            The progress card shows depth, nodes explored, queue
-                            size, and elapsed time.
-                        </li>
-                        <li>
-                            <strong>Explore:</strong> Drag nodes to tidy the
-                            layout and click any step to open it on Wikipedia.
-                        </li>
-                        <li>
-                            <strong>Resume:</strong> Your latest search is saved
-                            locally so you can refresh and continue later.
-                        </li>
-                    </ul>
-                    <p class="info-note">
-                        Tip: Some pairs can take longer or may not connect
-                        quickly. Try broader page titles if you get stuck.
-                    </p>
-                    <div class="info-links">
-                        <a href="/api/docs" target="_blank" rel="noopener"
-                            >API docs</a
-                        >
-                        <span aria-hidden="true">•</span>
-                        <a
-                            href="https://www.mediawiki.org/wiki/API:Main_page"
-                            target="_blank"
-                            rel="noopener"
-                            >Wikipedia API</a
-                        >
-                    </div>
-                </div>
-            </div>
 
-            <div class="input-section">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="startPage">Start Page</label>
-                        <input
-                            type="text"
-                            id="startPage"
-                            placeholder="Barack Obama"
-                            required
-                            aria-required="true"
-                        />
-                    </div>
-
-                    <div class="form-group">
-                        <label for="endPage">End Page</label>
-                        <input
-                            type="text"
-                            id="endPage"
-                            placeholder="Mathematics"
-                            required
-                            aria-required="true"
-                        />
-                    </div>
-                </div>
-
-                <div class="button-group">
-                    <button
-                        id="findPathBtn"
-                        class="btn btn-primary"
-                    >
-                        Find Path
-                    </button>
-                    <button
-                        id="cancelBtn"
-                        class="btn btn-cancel hidden"
-                    >
-                        Cancel Search
-                    </button>
-                    <button
-                        id="clearBtn"
-                        class="btn btn-secondary"
-                    >
-                        Clear
-                    </button>
-                </div>
-            </div>
-
-            <div id="error" class="error-message hidden" role="alert">
-                <p id="errorMessage"></p>
-            </div>
-
-            <div class="visualization-section" id="visualizationSection">
-                <div class="graph-container" id="graphContainer">
-                    <div class="search-progress hidden" id="searchProgress">
-                        <div class="search-progress-header">
-                            <span>Searching for path:</span>
-                            <span id="searchPath"
-                                >Barack Obama → Mathematics</span
-                            >
-                        </div>
-
-                        <div class="activity-bar">
-                            <div class="activity-bar-fill"></div>
-                        </div>
-
-                        <div class="depth-indicator">
-                            <div class="depth-label">Depth:</div>
-                            <div class="depth-dots" id="depthDots">
-                                <div class="depth-dot"></div>
-                                <div class="depth-dot"></div>
-                                <div class="depth-dot"></div>
-                                <div class="depth-dot"></div>
-                                <div class="depth-dot"></div>
-                                <div class="depth-dot"></div>
-                                <div class="depth-dot"></div>
-                                <div class="depth-dot"></div>
-                                <div class="depth-dot"></div>
-                                <div class="depth-dot"></div>
+                    <details class="howto">
+                        <summary>How it works</summary>
+                        <dl class="howto-list">
+                            <div>
+                                <dt>Search</dt>
+                                <dd>
+                                    A breadth-first search walks forward from
+                                    the start page and backward from the end
+                                    page through backlinks, until the two
+                                    frontiers meet.
+                                </dd>
                             </div>
-                        </div>
+                            <div>
+                                <dt>Watch</dt>
+                                <dd>
+                                    The readings update as each page is fetched:
+                                    depth reached, pages explored, the frontier
+                                    still queued, and the page being read now.
+                                </dd>
+                            </div>
+                            <div>
+                                <dt>Explore</dt>
+                                <dd>
+                                    Drag nodes to rearrange the graph; open any
+                                    step on Wikipedia. Your last search survives
+                                    a refresh.
+                                </dd>
+                            </div>
+                            <div>
+                                <dt>Limits</dt>
+                                <dd>
+                                    English Wikipedia only. The route is the
+                                    first one found, not a proven shortest, and
+                                    depth is capped.
+                                </dd>
+                            </div>
+                        </dl>
+                    </details>
+                </section>
 
-                        <div class="search-stats">
-                            <div class="search-stat">
-                                <div class="stat-label">Nodes Explored</div>
-                                <div class="stat-value" id="nodesExplored">
-                                    0
-                                </div>
-                            </div>
-                            <div class="search-stat">
-                                <div class="stat-label">Queue Size</div>
-                                <div class="stat-value" id="queueSize">0</div>
-                            </div>
-                            <div class="search-stat">
-                                <div class="stat-label">Elapsed Time</div>
-                                <div class="stat-value" id="elapsedTime">
-                                    0s
-                                </div>
-                            </div>
-                            <div class="search-stat last-node">
-                                <div class="stat-label">
-                                    Currently Exploring
-                                </div>
-                                <div
-                                    class="stat-value"
-                                    id="lastNode"
-                                    role="button"
-                                    tabindex="-1"
-                                >
-                                    -
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <svg
-                        id="graph"
-                        class="hidden"
-                        role="img"
-                        aria-label="Path visualization graph"
-                    ></svg>
-                </div>
-
-                <div
-                    id="pathStepsContainer"
-                    class="path-steps-container hidden"
+                <form
+                    class="route"
+                    id="route"
+                    novalidate
+                    aria-describedby="notice"
                 >
-                    <div class="path-header">
-                        <h2>Path Found</h2>
-                        <div class="path-stats">
-                            <span id="pathLength" class="stat"></span>
-                            <span id="searchTime" class="stat"></span>
-                            <span id="nodesExploredStat" class="stat"></span>
+                    <div class="route-fields">
+                        <div class="field field-from">
+                            <label for="startPage">From</label>
+                            <input
+                                type="text"
+                                id="startPage"
+                                name="start"
+                                placeholder="Barack Obama"
+                                autocomplete="off"
+                                autocapitalize="off"
+                                spellcheck="false"
+                                enterkeyhint="next"
+                                required
+                            />
+                        </div>
+
+                        <svg
+                            class="route-arrow"
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                        >
+                            <path d="M4 12h15M13 6l6 6-6 6" />
+                        </svg>
+
+                        <div class="field field-to">
+                            <label for="endPage">To</label>
+                            <input
+                                type="text"
+                                id="endPage"
+                                name="end"
+                                placeholder="Mathematics"
+                                autocomplete="off"
+                                autocapitalize="off"
+                                spellcheck="false"
+                                enterkeyhint="go"
+                                required
+                            />
                         </div>
                     </div>
-                    <div id="pathSteps" class="path-steps"></div>
-                </div>
-            </div>
+
+                    <div class="route-actions">
+                        <button type="submit" id="findPathBtn" class="btn btn-primary">
+                            Find path
+                        </button>
+                        <button
+                            type="button"
+                            id="cancelBtn"
+                            class="btn btn-quiet hidden"
+                        >
+                            Stop search
+                        </button>
+                        <button type="button" id="clearBtn" class="btn btn-text">
+                            Clear
+                        </button>
+                    </div>
+
+                    <div
+                        id="notice"
+                        class="notice hidden"
+                        role="alert"
+                        aria-live="assertive"
+                    >
+                        <svg class="notice-icon" viewBox="0 0 20 20" aria-hidden="true">
+                            <circle cx="10" cy="10" r="8" />
+                            <path d="M10 5.5v5.5M10 14v.5" />
+                        </svg>
+                        <div class="notice-body">
+                            <p class="notice-title" id="noticeTitle"></p>
+                            <p class="notice-message" id="noticeMessage"></p>
+                            <p class="notice-hint" id="noticeHint"></p>
+                        </div>
+                        <div class="notice-actions">
+                            <button
+                                type="button"
+                                id="retryBtn"
+                                class="btn btn-text hidden"
+                            >
+                                Try again
+                            </button>
+                            <button
+                                type="button"
+                                id="dismissBtn"
+                                class="icon-btn"
+                                aria-label="Dismiss"
+                            >
+                                <svg viewBox="0 0 20 20" aria-hidden="true">
+                                    <path d="M5 5l10 10M15 5L5 15" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+
+                <section
+                    class="run"
+                    id="visualizationSection"
+                    aria-labelledby="runRoute"
+                >
+                    <div class="run-head">
+                        <h2 class="run-route" id="runRoute">
+                            <span class="end-mark from" aria-hidden="true"></span>
+                            <span id="routeFrom">Barack Obama</span>
+                            <svg class="run-route-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6" /></svg>
+                            <span class="end-mark to" aria-hidden="true"></span>
+                            <span id="routeTo">Mathematics</span>
+                        </h2>
+                        <p class="run-state" id="runState">Searching</p>
+                    </div>
+
+                    <div class="activity" id="activity" aria-hidden="true">
+                        <div class="activity-fill"></div>
+                    </div>
+
+                    <!-- Readings: one update per fetched page, so deliberately
+                         not a live region; it is labelled and findable instead. -->
+                    <dl class="readings" id="searchProgress" aria-label="Search progress">
+                        <div class="reading">
+                            <dt>Depth</dt>
+                            <dd>
+                                <span class="depth-dots" id="depthDots">
+                                    <span class="depth-dot"></span>
+                                    <span class="depth-dot"></span>
+                                    <span class="depth-dot"></span>
+                                    <span class="depth-dot"></span>
+                                    <span class="depth-dot"></span>
+                                    <span class="depth-dot"></span>
+                                </span>
+                            </dd>
+                        </div>
+                        <div class="reading">
+                            <dt>Explored</dt>
+                            <dd id="nodesExplored">0</dd>
+                        </div>
+                        <div class="reading">
+                            <dt>Frontier</dt>
+                            <dd id="queueSize">0</dd>
+                        </div>
+                        <div class="reading">
+                            <dt>Elapsed</dt>
+                            <dd id="elapsedTime">0.0 s</dd>
+                        </div>
+                        <div class="reading reading-wide">
+                            <dt>Reading</dt>
+                            <dd>
+                                <a
+                                    id="lastNode"
+                                    class="disabled"
+                                    aria-disabled="true"
+                                    tabindex="-1"
+                                    target="_blank"
+                                    rel="noopener"
+                                    >—</a
+                                >
+                            </dd>
+                        </div>
+                    </dl>
+
+                    <div class="field-frame" id="graphContainer">
+                        <span class="reg reg-tl" aria-hidden="true"></span>
+                        <span class="reg reg-tr" aria-hidden="true"></span>
+                        <span class="reg reg-bl" aria-hidden="true"></span>
+                        <span class="reg reg-br" aria-hidden="true"></span>
+
+                        <div class="wait" id="waitScene" aria-hidden="true">
+                            <span class="wait-end from" id="waitFrom">Barack Obama</span>
+                            <span class="wait-line"><span></span></span>
+                            <span class="wait-end to" id="waitTo">Mathematics</span>
+                        </div>
+
+                        <svg
+                            id="graph"
+                            class="hidden"
+                            role="img"
+                            aria-label="Path visualization"
+                        ></svg>
+                    </div>
+
+                    <div class="route-list hidden" id="pathStepsContainer">
+                        <h2 class="route-list-title">Route</h2>
+                        <p class="route-summary" id="routeSummary"></p>
+                        <ol class="steps" id="pathSteps"></ol>
+                    </div>
+                </section>
+            </main>
+
+            <footer class="colophon">
+                <p>
+                    Searches live English Wikipedia. The route shown is the first
+                    one found, not a guaranteed shortest.
+                </p>
+                <p>
+                    <a href="https://github.com/mdhishaamakhtar/iris" target="_blank" rel="noopener">Open source, MIT</a>
+                </p>
+            </footer>
         </div>
 
         <script src="/static/script.js" defer></script>
-        <script>
-            // About box toggle with timed resurfacing and sticky open state
-            document.addEventListener("DOMContentLoaded", () => {
-                const RESURFACE_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
-                const KEY_NEXT_SHOW_AT = "iris_about_next_show_at";
-                const KEY_PINNED = "iris_about_pinned";
-                try {
-                    const box = document.getElementById("aboutBox");
-                    const toggle = document.getElementById("toggleAboutBtn");
-                    const now = Date.now();
-                    const nextShowAt = parseInt(
-                        localStorage.getItem(KEY_NEXT_SHOW_AT) || "0",
-                        10,
-                    );
-                    const pinned = localStorage.getItem(KEY_PINNED) === "true";
-
-                    const showBox = () => {
-                        if (box) box.classList.remove("hidden");
-                        if (toggle)
-                            toggle.setAttribute("aria-expanded", "true");
-                        localStorage.setItem(KEY_PINNED, "true");
-                    };
-                    const hideBox = () => {
-                        if (box) box.classList.add("hidden");
-                        if (toggle)
-                            toggle.setAttribute("aria-expanded", "false");
-                        localStorage.setItem(KEY_PINNED, "false");
-                        localStorage.setItem(
-                            KEY_NEXT_SHOW_AT,
-                            String(Date.now() + RESURFACE_INTERVAL_MS),
-                        );
-                    };
-
-                    if (pinned) {
-                        // Stay open across refreshes until user hides it
-                        showBox();
-                    } else if (!nextShowAt || now >= nextShowAt) {
-                        showBox();
-                    } else {
-                        if (toggle)
-                            toggle.setAttribute("aria-expanded", "false");
-                    }
-
-                    if (toggle) {
-                        toggle.addEventListener("click", () => {
-                            const isHidden = box.classList.contains("hidden");
-                            if (isHidden) {
-                                showBox();
-                            } else {
-                                hideBox();
-                            }
-                        });
-                    }
-                } catch (e) {
-                    /* no-op */
-                }
-            });
-        </script>
     </body>
 </html>
