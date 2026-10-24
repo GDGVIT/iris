@@ -78,6 +78,38 @@ def test_publishes_progress_while_searching(app):
         assert "max_depth" in meta["search_stats"]
 
 
+def test_progress_shows_each_frontier_and_the_pages_it_read_last(app):
+    with patch.object(find_path_task, "update_state") as update_state:
+        find_path_task.apply(args=("Python", "Mathematics", BIDIRECTIONAL))
+
+    frontiers = [
+        call.kwargs["meta"]["search_stats"]["frontier"]
+        for call in update_state.call_args_list
+        if "frontier" in call.kwargs["meta"]["search_stats"]
+    ]
+    last = frontiers[-1]
+
+    assert set(last) == {"forward", "backward"}
+    assert last["forward"]["recent"][-1] == "Python", "oldest read is the start"
+    assert last["backward"]["recent"][-1] == "Mathematics"
+    assert all(side["explored"] >= 1 for side in last.values())
+    assert all(len(side["recent"]) <= 6 for f in frontiers for side in f.values())
+
+
+def test_the_result_says_where_the_frontiers_met(app):
+    result = run()
+    stats = result["search_stats"]
+
+    assert stats["algorithm"] == BIDIRECTIONAL
+    assert stats["meeting_page"] in result["path"][1:-1]
+    assert set(stats["sides"]) == {"forward", "backward"}
+
+
+def test_a_found_route_is_kept_for_shared_links(app, store):
+    path = run()["path"]
+    assert store.get("route:Python:Mathematics") == path
+
+
 # --- Caching --------------------------------------------------------------
 
 

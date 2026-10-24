@@ -17,7 +17,8 @@ import pytest
 from app import Services, celery, create_app
 from app.config import Settings
 from app.store import RedisStore
-from app.wikipedia import PageFetched, PageStatus
+from app.wikipedia import PageFetched, PageStatus, Suggestion
+from app.wikitext import LinkContext
 
 # A small, deliberately asymmetric graph.
 #
@@ -76,6 +77,25 @@ class FakeWikipedia:
             exists=resolved in self.graph or resolved in DISAMBIGUATION_PAGES,
             resolved_title=resolved,
             is_disambiguation=resolved in DISAMBIGUATION_PAGES,
+        )
+
+    def suggest(self, prefix: str) -> list[Suggestion]:
+        titles = sorted([*self.graph, *DISAMBIGUATION_PAGES])
+        return [
+            Suggestion(
+                title=title,
+                description="",
+                is_disambiguation=title in DISAMBIGUATION_PAGES,
+            )
+            for title in titles
+            if title.casefold().startswith(prefix.casefold())
+        ]
+
+    def link_context(self, source: str, target: str) -> LinkContext:
+        if target not in self.graph.get(source, []):
+            return LinkContext(where="elsewhere")
+        return LinkContext(
+            where="prose", before=f"{source} relates to ", link=target, after="."
         )
 
     @staticmethod

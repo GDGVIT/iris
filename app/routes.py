@@ -7,8 +7,13 @@ describe the success path.
 
 from __future__ import annotations
 
+import json
 import logging
+import time
 import uuid
+from collections.abc import Iterator
+from dataclasses import asdict
+from pathlib import Path
 from typing import Any
 
 from celery import states
@@ -17,20 +22,31 @@ from flask import (
     Response,
     current_app,
     jsonify,
-    redirect,
     request,
     url_for,
 )
 from marshmallow import Schema, ValidationError, fields, validate, validates_schema
 
 from app import celery, services
-from app.errors import ConflictError, ErrorCode, NotFoundError
+from app.errors import (
+    ConflictError,
+    ErrorCode,
+    InvalidRequestError,
+    NotFoundError,
+    RateLimitedError,
+)
 from app.pathfinding import ALGORITHMS, BIDIRECTIONAL
-from app.tasks import PROGRESS, find_path_task
+from app.share import describe, render_card, with_share_meta
+from app.tasks import PROGRESS, find_path_task, route_key
 
 logger = logging.getLogger(__name__)
 
 api = Blueprint("api", __name__)
+
+MAX_TITLE = 255
+TERMINAL = (states.SUCCESS, states.FAILURE, states.REVOKED)
+KEEPALIVE_SECONDS = 15
+"""An idle stream sends a comment this often, so proxies do not close it."""
 
 
 class SearchSchema(Schema):
@@ -83,7 +99,10 @@ def start_search() -> tuple[Response, int]:
         description: Search accepted; poll poll_url for progress and the result
       400:
         description: Validation error
+      429:
+        description: Too many searches from this address; see Retry-After
     """
+    _rate_limit("search", services().settings.search_rate_limit)
     data = SearchSchema().load(request.get_json(silent=True) or {})
     start, end = data["start"].strip(), data["end"].strip()
 
@@ -122,8 +141,66 @@ def search_status(task_id: str) -> Response:
         description: Malformed task ID
     """
     _require_task_id(task_id)
+    return jsonify(_status(task_id))
+
+
+@api.get("/tasks/stream/<task_id>")
+def stream_status(task_id: str) -> Response:
+    """Stream a search's progress as Server-Sent Events.
+    ---
+    tags: [Pathfinding]
+    summary: Stream task status
+    description: >
+      Each event's data is the same JSON body GET /tasks/status/{task_id}
+      returns, sent whenever it changes. The stream ends after a terminal
+      status (SUCCESS, FAILURE or REVOKED), or after a couple of minutes, when
+      an EventSource reconnects by itself.
+    produces: [text/event-stream]
+    parameters:
+      - name: task_id
+        in: path
+        required: true
+        type: string
+    responses:
+      200:
+        description: An event stream of status bodies
+      404:
+        description: Malformed task ID
+      429:
+        description: Too many requests from this address
+    """
+    _require_task_id(task_id)
+    _rate_limit("api", services().settings.api_rate_limit)
+    settings = services().settings
+
+    def events() -> Iterator[str]:
+        yield f"retry: {int(settings.stream_interval * 2000)}\n\n"
+        last: dict[str, Any] | None = None
+        quiet = 0.0
+        deadline = time.monotonic() + settings.stream_max_seconds
+        while True:
+            body = _status(task_id)
+            if body != last:
+                yield f"data: {json.dumps(body)}\n\n"
+                last, quiet = body, 0.0
+            elif quiet >= KEEPALIVE_SECONDS:
+                yield ": keep-alive\n\n"
+                quiet = 0.0
+            if body["status"] in TERMINAL or time.monotonic() >= deadline:
+                return
+            time.sleep(settings.stream_interval)
+            quiet += settings.stream_interval
+
+    return Response(
+        events(),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+def _status(task_id: str) -> dict[str, Any]:
     task = find_path_task.AsyncResult(task_id)
-    body: dict[str, object] = {"task_id": task_id}
+    body: dict[str, Any] = {"task_id": task_id}
 
     if task.state == states.PENDING:
         body |= {"status": states.PENDING, "message": "Task is waiting to be processed"}
@@ -135,8 +212,7 @@ def search_status(task_id: str) -> Response:
         body |= {"status": states.FAILURE, "error": str(task.info)}
     else:
         body |= {"status": task.state}
-
-    return jsonify(body)
+    return body
 
 
 def _result(payload: dict[str, Any]) -> dict[str, Any]:
@@ -223,6 +299,109 @@ def health() -> tuple[Response, int]:
     )
 
 
+# --- Search helpers -------------------------------------------------------
+
+
+@api.get("/api/suggest")
+def suggest() -> Response:
+    """Suggest article titles for what has been typed so far.
+    ---
+    tags: [Pathfinding]
+    summary: Title suggestions
+    parameters:
+      - name: q
+        in: query
+        required: true
+        type: string
+        description: The start of a title
+    responses:
+      200:
+        description: >
+          Up to eight articles, best match first. Redirects are resolved;
+          disambiguation pages are flagged, since they cannot be an end page.
+      429:
+        description: Too many requests from this address
+    """
+    _rate_limit("api", services().settings.api_rate_limit)
+    query = request.args.get("q", "").strip()[:MAX_TITLE]
+    titles = services().wikipedia.suggest(query) if query else []
+    return jsonify({"query": query, "titles": [asdict(item) for item in titles]})
+
+
+@api.get("/api/context")
+def link_context() -> Response:
+    """The sentence in one article that links to the next.
+    ---
+    tags: [Pathfinding]
+    summary: Link context for one step of a path
+    parameters:
+      - name: from
+        in: query
+        required: true
+        type: string
+        description: The article that contains the link
+      - name: to
+        in: query
+        required: true
+        type: string
+        description: The article it links to
+    responses:
+      200:
+        description: >
+          "where" is "prose" when the link sits in running text, and then
+          before + link + after is the sentence with link as the linked words.
+          "template" means the link is in an infobox, table or template;
+          "elsewhere" means it is not in the article's own text at all
+          (usually a navigation box).
+      400:
+        description: Missing from or to
+      429:
+        description: Too many requests from this address
+    """
+    _rate_limit("api", services().settings.api_rate_limit)
+    source, target = _route_args()
+    context = services().wikipedia.link_context(source, target)
+    return jsonify({"from": source, "to": target, **asdict(context)})
+
+
+# --- Sharing --------------------------------------------------------------
+
+
+@api.get("/api/og.png")
+def share_image() -> Response:
+    """The preview image a shared route link unfurls into.
+    ---
+    tags: [Pathfinding]
+    summary: Share image for a route
+    produces: [image/png]
+    parameters:
+      - name: from
+        in: query
+        required: true
+        type: string
+      - name: to
+        in: query
+        required: true
+        type: string
+    responses:
+      200:
+        description: >
+          A 1200x630 PNG of the route if it has been found recently, or of the
+          question if not.
+      400:
+        description: Missing from or to
+    """
+    _rate_limit("api", services().settings.api_rate_limit)
+    start, end = _route_args()
+    path = services().store.get(route_key(start, end))
+    return Response(
+        render_card(start, end, path),
+        mimetype="image/png",
+        # Short when the route is unknown: it may be found a minute from now.
+        headers={"Cache-Control": f"public, max-age={86_400 if path else 300}"},
+    )
+
+
 # --- UI -------------------------------------------------------------------
 
 API_PREFIXES = ("getPath", "tasks", "health", "api", "apispec")
@@ -230,16 +409,36 @@ API_PREFIXES = ("getPath", "tasks", "health", "api", "apispec")
 
 @api.get("/")
 def index() -> Response:
-    """Serve the visualisation UI."""
-    return current_app.send_static_file("index.html")
+    """Serve the UI; a shared route link gets that route's preview tags."""
+    start = request.args.get("from", "").strip()[:MAX_TITLE]
+    end = request.args.get("to", "").strip()[:MAX_TITLE]
+    if not (start and end):
+        return current_app.send_static_file("index.html")
+
+    path = services().store.get(route_key(start, end))
+    route: dict[str, Any] = {"from": start, "to": end}
+    page = with_share_meta(
+        Path(current_app.static_folder or "", "index.html").read_text("utf-8"),
+        describe(start, end, path),
+        url=request.url,
+        image=url_for("api.share_image", _external=True, **route),
+    )
+    return Response(page, mimetype="text/html")
+
+
+@api.get("/favicon.ico")
+@api.get("/robots.txt")
+def root_file() -> Response:
+    """Files browsers and crawlers ask for at the root, not under /static."""
+    return current_app.send_static_file(request.path.lstrip("/"))
 
 
 @api.get("/<path:path>")
-def catch_all(path: str) -> Response:
-    """Send unknown API paths to a 404 and everything else to the UI."""
+def catch_all(path: str) -> tuple[Response, int]:
+    """Answer unknown API paths with JSON and everything else with a page."""
     if path.startswith(API_PREFIXES):
         raise NotFoundError("Endpoint not found")
-    return redirect(url_for("api.index"))  # type: ignore[return-value]
+    return current_app.send_static_file("404.html"), 404
 
 
 # --- Helpers --------------------------------------------------------------
@@ -252,6 +451,27 @@ def _require_task_id(task_id: str) -> None:
         raise NotFoundError(
             "Invalid task ID format", ErrorCode.INVALID_TASK_ID
         ) from exc
+
+
+def _route_args() -> tuple[str, str]:
+    source = request.args.get("from", "").strip()[:MAX_TITLE]
+    target = request.args.get("to", "").strip()[:MAX_TITLE]
+    if not (source and target):
+        raise InvalidRequestError("Both 'from' and 'to' are required")
+    return source, target
+
+
+def _rate_limit(bucket: str, limit: int) -> None:
+    """Allow ``limit`` requests per client per window, counted in Redis.
+
+    Fixed windows, keyed by the window's number, so every key expires on its
+    own and nothing needs sweeping.
+    """
+    window = services().settings.rate_window
+    now = int(time.time())
+    key = f"ratelimit:{bucket}:{request.remote_addr}:{now // window}"
+    if services().store.increment(key, ttl=window) > limit:
+        raise RateLimitedError(retry_after=window - now % window)
 
 
 def _wants_terminate() -> bool:

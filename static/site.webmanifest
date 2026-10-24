@@ -1,0 +1,13 @@
+{
+  "name": "Iris: Wikipedia Path Finder",
+  "short_name": "Iris",
+  "description": "Find a hyperlink path between any two Wikipedia pages.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
+  "icons": [
+    { "src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

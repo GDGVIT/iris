@@ -13,6 +13,25 @@ const NODE_R = 14;
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
+// Suggestions start after two characters, once typing pauses
+const SUGGEST_MIN_CHARS = 2;
+const SUGGEST_DELAY_MS = 140;
+
+// Routes known to resolve, for a visitor who arrives with nothing in mind
+const EXAMPLES = [
+  ["Banana", "Shah Rukh Khan"],
+  ["Python (programming language)", "Monty Python"],
+  ["Coffee", "Moon"],
+  ["Chess", "Ancient Egypt"],
+  ["Jazz", "Mount Everest"],
+  ["Pizza", "Albert Einstein"],
+  ["Tea", "Black hole"],
+  ["Ballet", "Volcano"],
+];
+const EXAMPLES_SHOWN = 3;
+
+const TERMINAL = new Set(["SUCCESS", "FAILURE", "REVOKED"]);
+
 const $ = (id) => document.getElementById(id);
 
 const formatSeconds = (seconds) =>
@@ -20,6 +39,33 @@ const formatSeconds = (seconds) =>
 
 const wikipediaUrl = (page) =>
   `https://en.wikipedia.org/wiki/${encodeURIComponent(page)}`;
+
+// A route as a link anyone can open: /?from=…&to=…
+function shareUrl(start, end) {
+  const url = new URL("/", window.location.origin);
+  url.searchParams.set("from", start);
+  url.searchParams.set("to", end);
+  return url.toString();
+}
+
+function sharedRoute() {
+  const params = new URLSearchParams(window.location.search);
+  const start = params.get("from")?.trim();
+  const end = params.get("to")?.trim();
+  return start && end ? { start, end } : null;
+}
+
+const plural = (count, word) =>
+  `${count.toLocaleString()} ${count === 1 ? word : `${word}s`}`;
+
+function shuffled(items) {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
 
 function openWikipediaPage(page) {
   if (page && page !== "-") window.open(wikipediaUrl(page), "_blank");
@@ -97,6 +143,189 @@ function debounce(fn, wait) {
   };
 }
 
+// Title suggestions under one route field: the ARIA combobox pattern, with
+// the input keeping focus and the active option named by
+// aria-activedescendant. Picking an option fills the field exactly, so the
+// search starts from a real title instead of a guess.
+class Autocomplete {
+  constructor(input, list, { onPick, isEnd }) {
+    this.input = input;
+    this.list = list;
+    this.onPick = onPick;
+    this.isEnd = isEnd;
+    this.options = [];
+    this.active = -1;
+    this.timer = null;
+    this.controller = null;
+    this.cache = new Map();
+
+    input.addEventListener("input", () => this.schedule());
+    input.addEventListener("keydown", (e) => this.onKey(e));
+    // iOS Safari can blur the input before a tapped option's click lands,
+    // so closing waits a beat; focus coming back cancels it.
+    input.addEventListener("blur", () => {
+      this.blurTimer = setTimeout(() => this.close(), 150);
+    });
+    input.addEventListener("focus", () => clearTimeout(this.blurTimer));
+    // Keep focus in the input while an option is pressed
+    list.addEventListener("pointerdown", (e) => e.preventDefault());
+  }
+
+  schedule() {
+    clearTimeout(this.timer);
+    const query = this.input.value.trim();
+    if (query.length < SUGGEST_MIN_CHARS) {
+      this.close();
+      return;
+    }
+    this.timer = setTimeout(() => this.fetch(query), SUGGEST_DELAY_MS);
+  }
+
+  async fetch(query) {
+    const key = query.toLowerCase();
+    if (this.cache.has(key)) {
+      this.render(this.cache.get(key));
+      return;
+    }
+    this.controller?.abort();
+    this.controller = new AbortController();
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/suggest?q=${encodeURIComponent(query)}`,
+        { signal: this.controller.signal },
+      );
+      if (!response.ok) return;
+      const { titles } = await response.json();
+      this.cache.set(key, titles);
+      // Typing moved on while this was in flight
+      if (this.input.value.trim().toLowerCase() !== key) return;
+      this.render(titles);
+    } catch {
+      /* suggestions are a convenience; the field still works without them */
+    }
+  }
+
+  render(titles) {
+    if (document.activeElement !== this.input) return;
+    // Nothing to add when the only match is what is already typed
+    const typed = this.input.value.trim();
+    if (!titles.length || (titles.length === 1 && titles[0].title === typed)) {
+      this.close();
+      return;
+    }
+
+    this.options = titles;
+    this.active = -1;
+    this.list.replaceChildren(
+      ...titles.map((item, index) => {
+        const option = document.createElement("li");
+        option.id = `${this.list.id}-${index}`;
+        option.className = "suggestion";
+        option.setAttribute("role", "option");
+        option.setAttribute("aria-selected", "false");
+
+        const title = document.createElement("span");
+        title.className = "suggestion-title";
+        title.textContent = item.title;
+        option.appendChild(title);
+
+        const note = item.is_disambiguation
+          ? this.isEnd
+            ? "Disambiguation page: pick a specific article"
+            : "Disambiguation page"
+          : item.description;
+        if (note) {
+          const detail = document.createElement("span");
+          detail.className = "suggestion-note";
+          detail.textContent = note;
+          option.appendChild(detail);
+        }
+        option.classList.toggle(
+          "is-ambiguous",
+          Boolean(item.is_disambiguation && this.isEnd),
+        );
+
+        option.addEventListener("click", () => this.pick(index));
+        return option;
+      }),
+    );
+    this.list.classList.remove("hidden");
+    this.input.setAttribute("aria-expanded", "true");
+  }
+
+  onKey(event) {
+    const open = !this.list.classList.contains("hidden");
+    switch (event.key) {
+      case "ArrowDown":
+      case "ArrowUp": {
+        if (!open) {
+          this.schedule();
+          return;
+        }
+        event.preventDefault();
+        const step = event.key === "ArrowDown" ? 1 : -1;
+        const count = this.options.length;
+        // Positions run 0..count, where 0 is the typed text itself
+        const position = (this.active + 1 + step + count + 1) % (count + 1);
+        this.highlight(position - 1);
+        break;
+      }
+      case "Enter":
+        if (open && this.active >= 0) {
+          event.preventDefault();
+          this.pick(this.active);
+        } else {
+          this.close();
+        }
+        break;
+      case "Escape":
+        if (open) {
+          event.preventDefault();
+          this.close();
+        }
+        break;
+      case "Tab":
+        this.close();
+        break;
+    }
+  }
+
+  // -1 means back to what was typed, with no option active
+  highlight(index) {
+    this.active = index;
+    [...this.list.children].forEach((option, i) => {
+      option.setAttribute("aria-selected", String(i === index));
+    });
+    const current = this.list.children[index];
+    if (current) {
+      this.input.setAttribute("aria-activedescendant", current.id);
+      current.scrollIntoView({ block: "nearest" });
+    } else {
+      this.input.removeAttribute("aria-activedescendant");
+    }
+  }
+
+  pick(index) {
+    clearTimeout(this.blurTimer);
+    const item = this.options[index];
+    if (!item) return;
+    this.input.value = item.title;
+    this.close();
+    this.onPick(item);
+  }
+
+  close() {
+    clearTimeout(this.timer);
+    this.controller?.abort();
+    this.options = [];
+    this.active = -1;
+    this.list.classList.add("hidden");
+    this.list.replaceChildren();
+    this.input.setAttribute("aria-expanded", "false");
+    this.input.removeAttribute("aria-activedescendant");
+  }
+}
+
 // Turn any failure into what the visitor needs: what happened, which field
 // (if one is at fault), and what to try next. Server messages are shown only
 // when they are written for people; internal ones stay in the server logs.
@@ -146,6 +375,13 @@ function describeFailure({ code, message, details }, route) {
         hint: "This is usually brief. Try again in a minute.",
         retry: true,
       };
+    case "RATE_LIMITED":
+      return {
+        title: "Too many searches at once",
+        message: "Iris limits how many searches one visitor can start each minute.",
+        hint: "Wait a minute, then try again.",
+        retry: true,
+      };
     case "TIMEOUT":
       return {
         title: "The search took too long",
@@ -180,10 +416,62 @@ class PathFinderUI {
     this.taskStartTime = null;
     this.pollTimeoutId = null;
     this.abortController = null;
+    this.eventSource = null;
+    this.watchdogId = null;
+    // Bumped per rendered route, so late link-context replies for an older
+    // route are dropped instead of written into the new one
+    this.routeGeneration = 0;
 
     this.initializeGraph();
+    this.setupAutocomplete();
+    this.renderExamples();
     this.setupEventListeners();
     this.restoreStateFromStorage();
+  }
+
+  setupAutocomplete() {
+    const fields = [
+      ["startPage", false],
+      ["endPage", true],
+    ];
+    for (const [id, isEnd] of fields) {
+      new Autocomplete($(id), $(`${id}Suggestions`), {
+        isEnd,
+        onPick: () => {
+          $(id).removeAttribute("aria-invalid");
+          this.saveCurrentState();
+          this.updateButtonState();
+          // Picking the start moves on to the end; picking the end is ready
+          if (!isEnd && !$("endPage").value.trim()) $("endPage").focus();
+        },
+      });
+    }
+  }
+
+  renderExamples() {
+    $("examplesList").replaceChildren(
+      ...shuffled(EXAMPLES)
+        .slice(0, EXAMPLES_SHOWN)
+        .map(([start, end]) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "example";
+          button.textContent = `${start} → ${end}`;
+          button.addEventListener("click", () => this.runRoute(start, end));
+          return button;
+        }),
+    );
+  }
+
+  runRoute(start, end) {
+    $("startPage").value = start;
+    $("endPage").value = end;
+    for (const id of ["startPage", "endPage"]) {
+      $(id).removeAttribute("aria-invalid");
+    }
+    this.saveCurrentState();
+    this.updateButtonState();
+    this.findPath();
   }
 
   initializeGraph() {
@@ -215,6 +503,13 @@ class PathFinderUI {
     $("clearBtn").addEventListener("click", () => this.clearVisualization());
     $("retryBtn").addEventListener("click", () => this.findPath());
     $("dismissBtn").addEventListener("click", () => this.hideNotice());
+    $("shareBtn").addEventListener("click", () => this.shareRoute());
+    $("surpriseBtn").addEventListener("click", () => {
+      const { start, end } = this.route();
+      const choices = EXAMPLES.filter(([a, b]) => a !== start || b !== end);
+      const [a, b] = choices[Math.floor(Math.random() * choices.length)];
+      this.runRoute(a, b);
+    });
 
     for (const id of ["startPage", "endPage"]) {
       $(id).addEventListener("input", () => {
@@ -236,6 +531,24 @@ class PathFinderUI {
 
   restoreStateFromStorage() {
     const saved = StateManager.load();
+    const shared = sharedRoute();
+
+    // A shared link names its route; it wins over whatever this browser
+    // last did, unless that is the very same route already found.
+    if (shared) {
+      const path = saved?.result?.path;
+      $("startPage").value = shared.start;
+      $("endPage").value = shared.end;
+      if (path && path[0] === shared.start && path.at(-1) === shared.end) {
+        this.showVisualizationSection();
+        this.handlePathFound(saved.result);
+      } else {
+        this.findPath();
+      }
+      this.updateButtonState();
+      return;
+    }
+
     if (saved) {
       if (saved.startPage) $("startPage").value = saved.startPage;
       if (saved.endPage) $("endPage").value = saved.endPage;
@@ -246,7 +559,7 @@ class PathFinderUI {
         this.taskStartTime = saved.taskStartTime || Date.now();
         this.showVisualizationSection();
         this.showLoading();
-        this.pollTaskStatus();
+        this.watchTask();
       } else if (saved.result?.path) {
         this.showVisualizationSection();
         this.handlePathFound(saved.result);
@@ -286,6 +599,7 @@ class PathFinderUI {
       clearTimeout(this.pollTimeoutId);
       this.pollTimeoutId = null;
     }
+    this.closeStream();
     // Abort any in-flight fetch requests
     if (this.abortController) {
       this.abortController.abort();
@@ -382,6 +696,7 @@ class PathFinderUI {
     // Reset depth. The real budget arrives with the first progress update;
     // until then keep whatever count is already rendered.
     this.updateDepthIndicator(0, $("depthDots").children.length || 6);
+    this.updateFrontiers({});
   }
 
   setLastNode(title) {
@@ -407,6 +722,49 @@ class PathFinderUI {
       progress.search_time_elapsed || 0,
     );
     this.setLastNode(stats.last_node);
+    this.updateFrontiers(stats);
+  }
+
+  // Each end's chip carries the pages that side read last, a count, and a
+  // fill along the line for how deep it has gone. The fills are measured
+  // against the whole depth budget, so two sides that meet touch mid-line.
+  updateFrontiers(stats) {
+    const frontier = stats.frontier || {};
+    const maxDepth = stats.max_depth || $("depthDots").children.length || 6;
+    const forwardOnly = stats.algorithm === "bfs";
+
+    for (const [side, suffix] of [
+      ["forward", "Forward"],
+      ["backward", "Backward"],
+    ]) {
+      const state = frontier[side];
+      this.renderTrail($(`trail${suffix}`), state?.recent || []);
+
+      let count = "Starting";
+      if (state) {
+        count = `${plural(state.explored, "page")} · ${plural(state.depth, "link")} out`;
+      } else if (side === "backward" && forwardOnly) {
+        count = "Waiting to be reached";
+      } else if (!stats.frontier) {
+        count = "";
+      }
+      $(`count${suffix}`).textContent = count;
+
+      const reach = Math.min(1, (state?.depth || 0) / maxDepth);
+      $(`reach${suffix}`).style.setProperty("--reach", reach.toFixed(3));
+    }
+  }
+
+  renderTrail(list, titles) {
+    const before = new Set([...list.children].map((li) => li.textContent));
+    list.replaceChildren(
+      ...titles.map((title) => {
+        const item = document.createElement("li");
+        item.textContent = title;
+        if (!before.has(title)) item.className = "is-new";
+        return item;
+      }),
+    );
   }
 
   updateDepthIndicator(currentDepth, maxDepth) {
@@ -444,6 +802,12 @@ class PathFinderUI {
 
   async findPath() {
     const { start, end } = this.route();
+
+    // A different route than the address bar names: stop advertising it
+    const shared = sharedRoute();
+    if (shared && (shared.start !== start || shared.end !== end)) {
+      history.replaceState(null, "", "/");
+    }
 
     if (!start || !end) {
       this.showNotice({
@@ -489,11 +853,68 @@ class PathFinderUI {
       this.taskId = data.task_id;
       this.taskStartTime = Date.now();
       this.saveCurrentState();
-      this.pollTaskStatus();
+      this.watchTask();
     } catch (error) {
       if (error.name === "AbortError") return;
       this.fail({ code: "OFFLINE" });
     }
+  }
+
+  // Follow the task over Server-Sent Events, falling back to polling when
+  // the browser has no EventSource or the stream cannot be kept open.
+  watchTask() {
+    if (!this.taskId) return;
+    if (!("EventSource" in window)) {
+      this.pollTaskStatus();
+      return;
+    }
+
+    const taskId = this.taskId;
+    const source = new EventSource(`${API_BASE}/tasks/stream/${taskId}`);
+    this.eventSource = source;
+    let errors = 0;
+
+    // The stream only speaks when something changes, so the ten-minute
+    // limit needs its own clock.
+    this.watchdogId = setInterval(() => {
+      if (this.taskId === taskId) this.checkTimeout();
+    }, 5000);
+
+    source.onmessage = (event) => {
+      if (this.taskId !== taskId) return;
+      errors = 0;
+      this.handleStatus(JSON.parse(event.data));
+    };
+
+    // An error with the source still CONNECTING is the browser retrying by
+    // itself (it does after every stream the server rotates); CLOSED, or a
+    // run of failures, means the stream is not coming back.
+    source.onerror = () => {
+      if (this.taskId !== taskId) return;
+      errors += 1;
+      if (source.readyState === EventSource.CLOSED || errors >= MAX_POLL_ERRORS) {
+        this.closeStream();
+        this.pollTaskStatus();
+      }
+    };
+  }
+
+  closeStream() {
+    this.eventSource?.close();
+    this.eventSource = null;
+    clearInterval(this.watchdogId);
+    this.watchdogId = null;
+  }
+
+  checkTimeout() {
+    if (
+      this.taskStartTime &&
+      Date.now() - this.taskStartTime > MAX_TASK_POLL_MS
+    ) {
+      this.fail({ code: "TIMEOUT" });
+      return true;
+    }
+    return false;
   }
 
   async pollTaskStatus(pollErrors = 0) {
@@ -501,15 +922,7 @@ class PathFinderUI {
     // mismatch means a cancel or new search happened and this chain must
     // die silently.
     const taskId = this.taskId;
-    if (!taskId) return;
-
-    if (
-      this.taskStartTime &&
-      Date.now() - this.taskStartTime > MAX_TASK_POLL_MS
-    ) {
-      this.fail({ code: "TIMEOUT" });
-      return;
-    }
+    if (!taskId || this.checkTimeout()) return;
 
     const pollAgain = (delay, errors = 0) => {
       this.pollTimeoutId = setTimeout(() => this.pollTaskStatus(errors), delay);
@@ -524,34 +937,8 @@ class PathFinderUI {
       const data = await response.json();
       if (this.taskId !== taskId) return;
 
-      switch (data.status) {
-        case "PENDING":
-          // Waiting for a worker; the route is already on screen
-          this.showProgressLoader();
-          pollAgain(1000);
-          break;
-
-        case "IN_PROGRESS":
-          this.showProgressLoader();
-          this.updateProgressDisplay(data.progress);
-          pollAgain(1000);
-          break;
-
-        case "SUCCESS":
-          this.handlePathFound(data.result);
-          break;
-
-        case "FAILURE":
-          this.fail({ code: data.code, message: data.error });
-          break;
-
-        case "REVOKED":
-          this.fail({ code: "STOPPED" });
-          break;
-
-        default:
-          this.fail({});
-      }
+      this.handleStatus(data);
+      if (!TERMINAL.has(data.status)) pollAgain(1000);
     } catch (error) {
       if (error.name === "AbortError") return;
       // Stale chain — don't clobber the new search's UI
@@ -564,6 +951,37 @@ class PathFinderUI {
         return;
       }
       this.fail({ code: "OFFLINE" });
+    }
+  }
+
+  // One status body, from the stream or a poll
+  handleStatus(data) {
+    switch (data.status) {
+      case "PENDING":
+        // Waiting for a worker; the route is already on screen
+        this.showProgressLoader();
+        break;
+
+      case "IN_PROGRESS":
+        this.showProgressLoader();
+        this.updateProgressDisplay(data.progress);
+        break;
+
+      case "SUCCESS":
+        this.closeStream();
+        this.handlePathFound(data.result);
+        break;
+
+      case "FAILURE":
+        this.fail({ code: data.code, message: data.error });
+        break;
+
+      case "REVOKED":
+        this.fail({ code: "STOPPED" });
+        break;
+
+      default:
+        this.fail({});
     }
   }
 
@@ -582,6 +1000,12 @@ class PathFinderUI {
 
     const path = result.path;
     this.setRoute(path[0], path[path.length - 1]);
+    // The address bar now names this route, ready to be copied or shared
+    try {
+      history.replaceState(null, "", shareUrl(path[0], path.at(-1)));
+    } catch {
+      /* some embedded browsers refuse history changes */
+    }
     $("runState").dataset.state = "found";
     $("runState").textContent = `Found in ${formatSeconds(result.search_time)}`;
 
@@ -1048,6 +1472,7 @@ class PathFinderUI {
   }
 
   displayPathList(path, result) {
+    const meeting = result.search_stats?.meeting_page;
     const explored =
       result.search_stats?.nodes_explored || result.nodes_explored || 0;
     const hops = path.length - 1;
@@ -1088,6 +1513,12 @@ class PathFinderUI {
         const title = document.createElement("span");
         title.className = "step-title";
         title.textContent = page;
+        if (page === meeting && index > 0 && index < path.length - 1) {
+          const tag = document.createElement("span");
+          tag.className = "step-tag";
+          tag.textContent = "Frontiers met";
+          title.append(" ", tag);
+        }
 
         const open = document.createElementNS(SVG_NS, "svg");
         open.setAttribute("class", "step-open");
@@ -1099,11 +1530,124 @@ class PathFinderUI {
 
         step.append(mark, number, title, open);
         item.appendChild(step);
+
+        // The sentence that carries this page's link to the next one
+        if (index < path.length - 1) {
+          const context = document.createElement("p");
+          context.className = "step-context is-loading";
+          context.textContent = "Finding the link…";
+          item.appendChild(context);
+        }
         return item;
       }),
     );
 
+    const explain = this.explainRoute(path, result);
+    $("routeExplain").textContent = explain;
+    $("routeExplain").classList.toggle("hidden", !explain);
+
     $("pathStepsContainer").classList.remove("hidden");
+    this.loadLinkContexts(path);
+  }
+
+  // Say what the two searches did, in a sentence
+  explainRoute(path, result) {
+    const stats = result.search_stats || {};
+    const sides = stats.sides;
+    const meeting = stats.meeting_page;
+    if (!sides?.forward || !meeting || path.length < 2) return "";
+
+    const start = path[0];
+    const end = path.at(-1);
+    const forward = sides.forward.explored || 0;
+    const backward = sides.backward?.explored || 0;
+    if (stats.algorithm === "bfs" || !backward) {
+      return `Searching forward from ${start}, Iris read ${plural(forward, "page")} before it reached ${end}.`;
+    }
+
+    const fromStart = path.indexOf(meeting);
+    const where =
+      fromStart <= 0 || fromStart >= path.length - 1
+        ? `The two searches met at ${meeting}.`
+        : `The two searches met at ${meeting}, ${plural(fromStart, "link")} from the start.`;
+    return `Iris read ${plural(forward, "page")} forward from ${start} and ${plural(backward, "page")} backward from ${end}. ${where}`;
+  }
+
+  loadLinkContexts(path) {
+    const generation = ++this.routeGeneration;
+    const contexts = $("pathSteps").querySelectorAll(".step-context");
+
+    path.slice(0, -1).forEach(async (source, index) => {
+      const element = contexts[index];
+      const target = path[index + 1];
+      try {
+        const query = new URLSearchParams({ from: source, to: target });
+        const response = await fetch(`${API_BASE}/api/context?${query}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const context = await response.json();
+        if (generation !== this.routeGeneration) return;
+        this.renderLinkContext(element, context);
+      } catch {
+        if (generation === this.routeGeneration) element.remove();
+      }
+    });
+  }
+
+  renderLinkContext(element, context) {
+    element.classList.remove("is-loading");
+    if (context.where !== "prose") {
+      element.classList.add("is-structural");
+      element.textContent =
+        context.where === "template"
+          ? "Linked from an infobox, table or template on this page."
+          : "Linked from a navigation box or template on this page.";
+      return;
+    }
+
+    const link = document.createElement("span");
+    link.className = "step-context-link";
+    link.textContent = context.link;
+    const quote = document.createElement("q");
+    quote.append(context.before, link, context.after);
+    element.replaceChildren(quote);
+
+    if (context.section) {
+      const section = document.createElement("span");
+      section.className = "step-context-section";
+      section.textContent = context.section;
+      element.append(" ", section);
+    }
+  }
+
+  async shareRoute() {
+    const start = $("routeFrom").textContent;
+    const end = $("routeTo").textContent;
+    const url = shareUrl(start, end);
+    const touch = window.matchMedia("(pointer: coarse)").matches;
+
+    // Phones get the system share sheet; desktops copy the link
+    if (touch && navigator.share) {
+      try {
+        await navigator.share({ title: `${start} → ${end} · Iris`, url });
+      } catch {
+        /* dismissed */
+      }
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      window.prompt("Copy this link", url);
+      return;
+    }
+    $("shareLabel").textContent = "Link copied";
+    $("shareStatus").textContent = `Link to ${start} → ${end} copied`;
+    clearTimeout(this.shareTimer);
+    this.shareTimer = setTimeout(() => {
+      $("shareLabel").textContent = "Copy link";
+      $("shareStatus").textContent = "";
+    }, 2000);
   }
 
   async cancelSearch() {
@@ -1130,6 +1674,8 @@ class PathFinderUI {
 
     $("pathStepsContainer").classList.add("hidden");
     $("visualizationSection").classList.remove("show");
+    this.routeGeneration++;
+    history.replaceState(null, "", "/");
     this.graph.svg.selectAll("*").remove();
     this.graph.simulation?.stop();
     this.graph.simulation = null;

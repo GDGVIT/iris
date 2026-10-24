@@ -41,6 +41,11 @@ ProgressCallback = Callable[["Progress"], None]
 FetchLinks = Callable[[list[str], PageFetched | None], dict[str, list[str]]]
 
 
+SideStats = dict[str, dict[str, int]]
+"""Per frontier ("forward", "backward"): pages ``explored`` so far, and the
+``depth`` reached, in links out from that side's own end page."""
+
+
 @dataclass(frozen=True, slots=True)
 class Progress:
     """A snapshot of an in-flight search, sent to the client as it runs."""
@@ -50,6 +55,9 @@ class Progress:
     current_depth: int
     last_node: str
     elapsed: float
+    side: str
+    """The frontier ``last_node`` was read by: "forward" or "backward"."""
+    sides: SideStats
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +65,10 @@ class PathResult:
     path: list[str]
     nodes_explored: int
     search_time: float
+    # Defaulted so results cached before these fields existed still load.
+    meeting: str = ""
+    """The page where the two frontiers touched. In plain BFS, the target."""
+    sides: SideStats = field(default_factory=dict)
 
     @property
     def length(self) -> int:
@@ -87,9 +99,10 @@ class _Counters:
     lock: threading.Lock = field(default_factory=threading.Lock)
     nodes_explored: int = 0
     depth_by_side: dict[str, int] = field(default_factory=dict)
+    explored_by_side: dict[str, int] = field(default_factory=dict)
 
-    def record(self, side: str, depth: int) -> tuple[int, int]:
-        """Count one fetched page; return (total explored, combined depth).
+    def record(self, side: str, depth: int) -> tuple[int, int, SideStats]:
+        """Count one fetched page; return (total explored, combined depth, sides).
 
         Combined depth sums both sides because a bidirectional search meeting
         at forward depth 2 and backward depth 2 has covered four hops of path.
@@ -97,7 +110,19 @@ class _Counters:
         with self.lock:
             self.nodes_explored += 1
             self.depth_by_side[side] = max(self.depth_by_side.get(side, 0), depth)
-            return self.nodes_explored, sum(self.depth_by_side.values())
+            self.explored_by_side[side] = self.explored_by_side.get(side, 0) + 1
+            return (
+                self.nodes_explored,
+                sum(self.depth_by_side.values()),
+                self.sides(),
+            )
+
+    def sides(self) -> SideStats:
+        # Expanding a page at depth d reaches pages d + 1 links out.
+        return {
+            side: {"explored": explored, "depth": self.depth_by_side[side] + 1}
+            for side, explored in self.explored_by_side.items()
+        }
 
 
 class PathFinder:
@@ -127,7 +152,9 @@ class PathFinder:
         if not start or not end:
             raise InvalidRequestError("Start and end pages are required")
         if start == end:
-            return PathResult(path=[start], nodes_explored=1, search_time=0.0)
+            return PathResult(
+                path=[start], nodes_explored=1, search_time=0.0, meeting=start
+            )
 
         started = time.monotonic()
         counters = _Counters()
@@ -154,6 +181,8 @@ class PathFinder:
                 path=path,
                 nodes_explored=counters.nodes_explored,
                 search_time=time.monotonic() - started,
+                meeting=meeting,
+                sides=counters.sides(),
             )
         finally:
             self.store.delete(*all_keys)
@@ -327,7 +356,7 @@ class PathFinder:
         )
 
         def page_fetched(title: str, _titles: list[str]) -> None:
-            explored, combined_depth = counters.record(side.name, depth)
+            explored, combined_depth, sides = counters.record(side.name, depth)
             if report is None:
                 return
             report(
@@ -337,6 +366,8 @@ class PathFinder:
                     current_depth=combined_depth,
                     last_node=title,
                     elapsed=round(time.monotonic() - started, 2),
+                    side=side.name,
+                    sides=sides,
                 )
             )
 

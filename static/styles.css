@@ -90,6 +90,15 @@ a {
     border-radius: 2px;
 }
 
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
 .skip-link {
     position: absolute;
     left: var(--sp-4);
@@ -169,6 +178,14 @@ a {
     letter-spacing: -0.035em;
     max-width: 21ch;
     text-wrap: balance;
+}
+
+/* 404: the code is a reading, so it takes the reading face */
+.lost-code {
+    margin-bottom: var(--sp-3);
+    font-size: var(--fs-reading);
+    font-weight: 500;
+    color: var(--danger-ink);
 }
 
 .lead-copy {
@@ -254,6 +271,10 @@ a {
     column-gap: var(--sp-6);
 }
 
+.field {
+    position: relative;
+}
+
 .field label {
     display: inline-flex;
     align-items: center;
@@ -322,6 +343,62 @@ a {
     box-shadow: 0 1px 0 var(--danger-red);
 }
 
+/* Title suggestions float over the page like the graph tooltip: the one
+   raised, shadowed surface, because it sits above whatever is below it. */
+.suggestions {
+    position: absolute;
+    z-index: 20;
+    top: 100%;
+    left: 0;
+    right: 0;
+    max-height: min(360px, 60vh);
+    overflow-y: auto;
+    list-style: none;
+    border: 1px solid var(--rule-strong);
+    border-top: 0;
+    background: var(--bg-secondary);
+    box-shadow: 0 8px 24px rgba(1, 4, 9, 0.6);
+}
+
+.suggestion {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 44px;
+    padding: var(--sp-2) var(--sp-3);
+    border-top: 1px solid var(--rule);
+    cursor: pointer;
+}
+
+.suggestion:first-child {
+    border-top: 0;
+}
+
+.suggestion-title {
+    font-size: var(--fs-body);
+    font-weight: 500;
+    overflow-wrap: anywhere;
+}
+
+.suggestion-note {
+    font-size: var(--fs-label);
+    color: var(--text-tertiary);
+    overflow-wrap: anywhere;
+}
+
+.suggestion[aria-selected="true"],
+.suggestion:hover {
+    background: var(--bg-tertiary);
+}
+
+.suggestion[aria-selected="true"] .suggestion-title {
+    color: var(--accent-blue);
+}
+
+.suggestion.is-ambiguous .suggestion-title {
+    color: var(--text-secondary);
+}
+
 .route-arrow {
     width: 22px;
     height: 22px;
@@ -340,6 +417,44 @@ a {
     margin-top: var(--sp-6);
 }
 
+/* Example routes: in-text actions, so Path Blue like "How it works" */
+.examples {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0 var(--sp-4);
+    margin-top: var(--sp-3);
+    font-size: var(--fs-small);
+    color: var(--text-tertiary);
+}
+
+.examples-list {
+    display: contents;
+}
+
+.example,
+.examples-surprise {
+    min-height: 44px;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: var(--accent-blue);
+    text-align: left;
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+
+.example:hover,
+.examples-surprise:hover {
+    color: var(--accent-blue-hover);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.examples-surprise {
+    color: var(--text-secondary);
+}
+
 /* --- Buttons ------------------------------------------------------------- */
 
 .btn {
@@ -355,6 +470,7 @@ a {
     font: inherit;
     font-size: 14px;
     font-weight: 600;
+    text-decoration: none;
     cursor: pointer;
     transition:
         background-color 0.15s ease,
@@ -781,23 +897,36 @@ a {
     border-right-width: 1px;
 }
 
-/* While searching the field shows only the two ends, joined by a line
-   that is still being drawn. */
+/* While searching, the field shows the two frontiers: each end with the
+   pages that side read last, joined by a line each side fills as it goes
+   deeper. The fills are scaled to the whole depth budget, so they meet. */
 .wait {
     position: absolute;
     inset: 0;
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(64px, 320px) minmax(0, 1fr);
     align-items: center;
-    justify-content: center;
     gap: var(--sp-4);
     padding: var(--sp-10);
+}
+
+.wait-side {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--sp-2);
+    min-width: 0;
+}
+
+.wait-side.to {
+    align-items: flex-start;
 }
 
 .wait-end {
     display: inline-flex;
     align-items: center;
     gap: var(--sp-2);
-    max-width: 30%;
+    max-width: 100%;
     padding: var(--sp-1) var(--sp-3);
     border: 1px solid var(--rule-strong);
     border-radius: 4px;
@@ -822,10 +951,52 @@ a {
     background: var(--danger-red);
 }
 
+/* Newest first, fading with age */
+.wait-trail {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    align-items: inherit;
+    max-width: 100%;
+    min-height: calc(6 * 20px);
+    font-size: var(--fs-label);
+    line-height: 20px;
+    color: var(--text-secondary);
+}
+
+.wait-trail li {
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wait-trail li:nth-child(2) { opacity: 0.8; }
+.wait-trail li:nth-child(3) { opacity: 0.65; }
+.wait-trail li:nth-child(4) { opacity: 0.5; }
+.wait-trail li:nth-child(5) { opacity: 0.38; }
+.wait-trail li:nth-child(6) { opacity: 0.26; }
+
+.wait-trail li.is-new:first-child {
+    color: var(--text-primary);
+    animation: trail-in 0.3s var(--ease-out);
+}
+
+@keyframes trail-in {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+}
+
+.wait-count {
+    min-height: 20px;
+    font-size: var(--fs-label);
+    color: var(--text-tertiary);
+}
+
 .wait-line {
     position: relative;
-    flex: 1;
-    max-width: 320px;
     height: 1px;
     background-image: linear-gradient(
         90deg,
@@ -836,7 +1007,24 @@ a {
     overflow: clip;
 }
 
-.wait-line span {
+.wait-reach {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: calc(var(--reach, 0) * 100%);
+    background: var(--accent-blue);
+    transition: width 0.5s var(--ease-out);
+}
+
+.wait-reach.from {
+    left: 0;
+}
+
+.wait-reach.to {
+    right: 0;
+}
+
+.wait-sweep {
     position: absolute;
     inset: 0;
     width: 30%;
@@ -863,6 +1051,28 @@ a {
     margin-top: var(--sp-10);
 }
 
+.route-list-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-4);
+}
+
+.share-btn {
+    gap: var(--sp-2);
+    margin-right: calc(-1 * var(--sp-3));
+}
+
+.share-btn svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
 .route-list-title {
     font-size: 16px;
     font-weight: 600;
@@ -873,6 +1083,14 @@ a {
     margin-top: var(--sp-1);
     font-size: var(--fs-small);
     color: var(--text-secondary);
+}
+
+.route-explain {
+    margin-top: var(--sp-2);
+    max-width: var(--measure);
+    font-size: var(--fs-small);
+    color: var(--text-secondary);
+    text-wrap: pretty;
 }
 
 .route-summary span + span::before {
@@ -912,8 +1130,10 @@ a {
     opacity: 0.45;
 }
 
+/* From the first mark, which sits mid-row: a step can be taller than its
+   row once its link context is below it, so 50% of the item would miss. */
 .steps li:first-child::before {
-    top: 50%;
+    top: 26px;
 }
 
 .steps li:last-child::before {
@@ -981,6 +1201,58 @@ a {
 
 .step:focus-visible {
     border-radius: 0;
+}
+
+.step-tag {
+    font-size: var(--fs-label);
+    font-weight: 400;
+    color: var(--text-tertiary);
+    white-space: nowrap;
+}
+
+.step-tag::before {
+    content: "·";
+    margin-right: var(--sp-2);
+}
+
+/* The sentence linking a step to the next, hung under its title */
+.step-context {
+    max-width: var(--measure);
+    margin: calc(-1 * var(--sp-1)) 0 0 calc(9px + 36px + 2 * var(--sp-3));
+    padding-bottom: var(--sp-3);
+    font-size: var(--fs-small);
+    line-height: 1.6;
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+    animation: context-in 0.3s var(--ease-out);
+}
+
+.step-context.is-loading,
+.step-context.is-structural {
+    color: var(--text-tertiary);
+}
+
+.step-context q {
+    quotes: "“" "”";
+}
+
+.step-context-link {
+    color: var(--accent-blue);
+}
+
+.step-context-section {
+    color: var(--text-tertiary);
+    white-space: nowrap;
+}
+
+.step-context-section::before {
+    content: "— ";
+}
+
+@keyframes context-in {
+    from {
+        opacity: 0;
+    }
 }
 
 /* --- Colophon ------------------------------------------------------------ */
@@ -1168,18 +1440,40 @@ a {
     }
 
     .wait {
-        flex-direction: column;
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto 56px auto;
+        justify-items: center;
+        align-content: center;
+        gap: var(--sp-3);
         padding: var(--sp-6);
     }
 
-    .wait-end {
+    .wait-side,
+    .wait-side.to {
+        align-items: center;
         max-width: 100%;
     }
 
+    /* The end reads bottom-up, so its newest page sits nearest the line */
+    .wait-side.to {
+        flex-direction: column-reverse;
+    }
+
+    .wait-trail {
+        min-height: calc(3 * 20px);
+    }
+
+    .wait-side.to .wait-trail {
+        flex-direction: column-reverse;
+    }
+
+    .wait-trail li:nth-child(n + 4) {
+        display: none;
+    }
+
     .wait-line {
-        flex: none;
         width: 1px;
-        height: 72px;
+        height: 100%;
         background-image: linear-gradient(
             180deg,
             var(--rule-strong) 50%,
@@ -1188,7 +1482,25 @@ a {
         background-size: 1px 8px;
     }
 
-    .wait-line span {
+    .wait-reach {
+        left: 0;
+        right: 0;
+        width: auto;
+        height: calc(var(--reach, 0) * 100%);
+        transition-property: height;
+    }
+
+    .wait-reach.from {
+        top: 0;
+        bottom: auto;
+    }
+
+    .wait-reach.to {
+        top: auto;
+        bottom: 0;
+    }
+
+    .wait-sweep {
         width: 100%;
         height: 30%;
         background: linear-gradient(
@@ -1238,7 +1550,7 @@ a {
     /* Searching must stay perceivable: swap travel for a slow fade instead
        of freezing it, which reads as broken. */
     .activity-fill,
-    .wait-line span {
+    .wait-sweep {
         width: 100% !important;
         height: 100% !important;
         transform: none !important;

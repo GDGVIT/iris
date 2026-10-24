@@ -216,10 +216,10 @@ The page is flat. Depth is conveyed by tone (Raised Ground for chips) and by the
 ### Shadow Vocabulary
 - **Focus ring** (`box-shadow: 0 0 0 2px #0d1117, 0 0 0 4px #58a6ff`): every `:focus-visible`; inputs instead swap their underline to blue with a 1px blue under-shadow.
 - **Knock-out ring** (`box-shadow: 0 0 0 3px #0d1117`): step marks, so the rail appears to pass behind them.
-- **Tooltip lift** (`box-shadow: 0 8px 24px rgba(1, 4, 9, 0.6)`): the graph tooltip only.
+- **Tooltip lift** (`box-shadow: 0 8px 24px rgba(1, 4, 9, 0.6)`): the graph tooltip and the title suggestion list, the two surfaces that float over other content.
 
 ### Named Rules
-**The Flat Ground Rule.** Nothing on the page casts a shadow except the pointer tooltip. Do not lift sections, buttons or chips.
+**The Flat Ground Rule.** Nothing on the page casts a shadow except what floats above it: the pointer tooltip and the suggestion list. Do not lift sections, buttons or chips.
 
 ## Shapes
 
@@ -242,6 +242,12 @@ Restrained and exact: one filled action, everything else outlined or bare.
 - **Hover:** underline lifts to Faint Ink.
 - **Error:** `aria-invalid="true"` turns the underline To Red with the same 1px under-shadow.
 
+### Suggestions
+A listbox hung from the bottom of a route field while typing (ARIA combobox; the input keeps focus). Raised Ground with a 1px Strong Hairline border, no top border so it reads as the field's continuation, square corners and the tooltip lift. Each option is a 44px row ruled by a Hairline: the title at Body 500, the Wikipedia short description below in Label Faint Ink. The active option takes Sunken Fill and a Path Blue title. A disambiguation page in the To field is muted and says to pick a specific article.
+
+### Examples
+Under the route actions, one Small line: "Try" in Faint Ink, three example routes as Path Blue in-text actions (shuffled per visit), and "Surprise me" in Muted Ink. Each is a 44px target.
+
 ### Notice
 The error and "stopped" message, ruled not boxed. A three-column row: 20px stroked icon in the tone colour, body, actions. A tone rule on top (the tone at 55% via `color-mix`), a Hairline below, 16px vertical padding, no fill, no radius. The title names the problem (To Red Ink, 600), the message adds a new fact (Ink, Small), the hint gives recovery (Muted Ink, Small); empty lines collapse. The neutral variant swaps the tone to Faint Ink and the title to Ink. It enters with a 4px drop-in over 0.35s.
 
@@ -252,12 +258,17 @@ The masthead is a 64px bar ruled below: the wordmark (24px logo plus "Iris" at T
 The signature of the instrument: a row of figures separated by vertical Hairlines, no boxes. Four equal columns plus a double-width "Reading" column holding the page currently being read as a Path Blue link (Faint Ink and inert when empty). Labels are 12px Faint Ink; values are Reading type. Depth is shown as a row of 8px circles: hollow (Strong Hairline), active (blue outline, beating), completed (blue fill). Above the readings a 1px activity track carries a blue sweep while searching.
 
 ### The Field (graph plot)
-A dot field (1px dots at 16% grey on a 20px grid) framed by corner registration marks, 360px minimum height (300px on phones). While searching it shows only the two ends as label chips joined by a dashed 1px line with a travelling blue highlight; when the path arrives the D3 graph replaces it. Nodes are blue with a 2px ground stroke; the start and end nodes take their signal colour with a translucent 5px halo of the same hue. Path edges are 2.5px Path Blue with a single SVG arrowhead; other edges are 2px Strong Hairline at 60%. Label chips are Raised Ground with a 1px Strong Hairline border and 4px corners.
+A dot field (1px dots at 16% grey on a 20px grid) framed by corner registration marks, 360px minimum height (300px on phones). While searching it shows the two frontiers: each end as a label chip, under it the pages that side read last (Label size, newest first in Ink, older ones fading to 26%), and a count ("214 pages · 2 links out") in Faint Ink. Between them a dashed 1px line carries a travelling blue highlight, and each side fills the line with solid Path Blue from its own end as it goes deeper, scaled to the whole depth budget so the two fills meet mid-line. Under 640px the scene stacks: start on top, end at the bottom reading upward, three pages per side. When the path arrives the D3 graph replaces it. Nodes are blue with a 2px ground stroke; the start and end nodes take their signal colour with a translucent 5px halo of the same hue. Path edges are 2.5px Path Blue with a single SVG arrowhead; other edges are 2px Strong Hairline at 60%. Label chips are Raised Ground with a 1px Strong Hairline border and 4px corners.
 
 The force simulation is tuned and fixed: link distance spans the available axis with strength 1; charge -240 (horizontal) or -160 (vertical); x/y position forces 0.22/0.10 (horizontal) or 0.16/0.22 (vertical); collision strength 0.8; alphaDecay 0.03; velocityDecay 0.45. These values are part of the system, not tuning knobs.
 
 ### Route List
 The found route as a ruled ordered list: each step is a 52px row ruled on top, with a 9px mark, a 36px index column, the title and a stroked open-arrow. A 1px blue rail at 45% opacity threads the marks, starting at the first mark and ending at the last; first mark green, last red, the rest blue. Hover turns the title Path Blue and nudges the arrow 2px up-right.
+
+Above the list, the "Route" title shares its row with a "Copy link" text button (the system share sheet on touch devices). Under the summary, one Small Muted sentence explains the search: pages read on each side and where the frontiers met; that step carries a Faint "Frontiers met" tag. Under every step but the last hangs the sentence from that article which links to the next, as a quotation in Small Muted Ink aligned with the titles, the linked words in Path Blue and the section name in Faint Ink. A link found only in an infobox or navigation box says so in Faint Ink instead.
+
+### 404
+The same shell, masthead and colophon. The lead carries "404" at Reading size in To Red Ink, the display line "No page here.", one line of copy and the primary button back to the search.
 
 ## Do's and Don'ts
 
