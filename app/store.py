@@ -49,6 +49,13 @@ class RedisStore:
     def expire(self, key: str, seconds: int) -> None:
         self._redis.expire(key, seconds)
 
+    def increment(self, key: str, ttl: int) -> int:
+        """Add one to a counter, starting its expiry when it is created."""
+        count = int(self._redis.incr(key))  # type: ignore[arg-type]
+        if count == 1:
+            self._redis.expire(key, ttl)
+        return count
+
     # --- Sets -------------------------------------------------------------
 
     def set_add(self, key: str, *values: str) -> None:

@@ -1,5 +1,7 @@
 User-agent: *
 Allow: /
-Disallow: /api/docs
+Allow: /api/og.png
+Disallow: /api/
 Disallow: /apispec.json
-Disallow: /cache/clear
+Disallow: /tasks/
+Disallow: /getPath

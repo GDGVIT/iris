@@ -69,10 +69,36 @@ class Settings:
 
     # Cache lifetimes, in seconds
     links_cache_ttl: int = 86_400
+    hub_cache_ttl: int = 604_800
+    """Link lists that reach ``hub_link_threshold`` belong to hub articles
+    (countries, years, broad topics). Nearly every search passes through them
+    and their link sets barely move, so they are kept a week, not a day."""
+    hub_link_threshold: int = 500
     path_cache_ttl: int = 3_600
     page_cache_ttl: int = 7_200
     search_state_ttl: int = 3_600
     """Safety net so per-search Redis keys expire even if cleanup is skipped."""
+    share_ttl: int = 2_592_000
+    """How long a found route stays available to shared links and their
+    preview images: thirty days, long after the path cache has let it go."""
+    context_cache_ttl: int = 604_800
+    suggest_cache_ttl: int = 86_400
+
+    # Rate limits, per client IP per window
+    search_rate_limit: int = 10
+    """Searches started per window. Each one fans out to hundreds of
+    Wikipedia requests, so this is what keeps one script from getting the
+    whole service throttled."""
+    api_rate_limit: int = 120
+    """Requests per window to the lighter endpoints (suggestions, link
+    context, progress streams, share images)."""
+    rate_window: int = 60
+
+    # Progress streaming
+    stream_interval: float = 0.5
+    stream_max_seconds: int = 120
+    """A stream closes after this long and the browser reconnects, so a
+    stream for a task that never starts cannot hold a thread forever."""
 
     # Pathfinding
     max_search_depth: int = 6

@@ -19,6 +19,7 @@ class ErrorCode(StrEnum):
     PAGE_NOT_FOUND = "PAGE_NOT_FOUND"
     DISAMBIGUATION_PAGE = "DISAMBIGUATION_PAGE"
     PATH_NOT_FOUND = "PATH_NOT_FOUND"
+    RATE_LIMITED = "RATE_LIMITED"
     WIKIPEDIA_API_ERROR = "WIKIPEDIA_API_ERROR"
     CONFIGURATION_ERROR = "CONFIGURATION_ERROR"
     INTERNAL_ERROR = "INTERNAL_ERROR"
@@ -36,6 +37,11 @@ class IrisError(Exception):
         if code is not None:
             self.code = code
 
+    @property
+    def headers(self) -> dict[str, str]:
+        """Extra response headers the error needs, such as ``Retry-After``."""
+        return {}
+
 
 class InvalidRequestError(IrisError):
     code = ErrorCode.INVALID_REQUEST
@@ -50,6 +56,19 @@ class NotFoundError(IrisError):
 class ConflictError(IrisError):
     code = ErrorCode.TASK_ALREADY_COMPLETE
     status = 409
+
+
+class RateLimitedError(IrisError):
+    code = ErrorCode.RATE_LIMITED
+    status = 429
+
+    def __init__(self, retry_after: int) -> None:
+        super().__init__(f"Too many requests. Try again in {retry_after} seconds.")
+        self.retry_after = retry_after
+
+    @property
+    def headers(self) -> dict[str, str]:
+        return {"Retry-After": str(self.retry_after)}
 
 
 class PageNotFoundError(IrisError):

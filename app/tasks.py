@@ -10,6 +10,7 @@ as exceptions, which is what drives Celery's retry.
 from __future__ import annotations
 
 import logging
+from collections import deque
 from collections.abc import Callable
 from dataclasses import asdict
 from typing import Any, NotRequired, TypedDict
@@ -41,6 +42,21 @@ PROGRESS = "PROGRESS"
 
 RETRYABLE = (requests.RequestException, redis.RedisError, WikipediaAPIError)
 
+RECENT_PER_SIDE = 6
+"""Pages each frontier shows the UI while it runs: the ones it read last."""
+
+
+def route_key(start_page: str, end_page: str) -> str:
+    """Where a found route is kept for shared links, whichever algorithm ran."""
+    return f"route:{start_page}:{end_page}"
+
+
+class FrontierStats(TypedDict):
+    explored: int
+    depth: int
+    recent: list[str]
+    """Newest first."""
+
 
 class SearchStats(TypedDict, total=False):
     """The progress payload the UI renders. Field names are part of the API."""
@@ -54,6 +70,12 @@ class SearchStats(TypedDict, total=False):
     end_page: str
     final_depth: int
     search_completed: bool
+    algorithm: str
+    frontier: dict[str, FrontierStats]
+    """In flight: per-side counts and the pages each side read last."""
+    meeting_page: str
+    sides: dict[str, dict[str, int]]
+    """Finished: per-side ``explored`` and ``depth``."""
 
 
 class TaskResult(TypedDict):
@@ -96,6 +118,7 @@ def find_path_task(
                     "start_page": start_page,
                     "end_page": end_page,
                     "max_depth": settings.max_search_depth,
+                    "algorithm": algorithm,
                     **stats,
                 },
                 "search_time_elapsed": elapsed,
@@ -121,7 +144,13 @@ def find_path_task(
             },
         )
 
+        recent: dict[str, deque[str]] = {
+            "forward": deque(maxlen=RECENT_PER_SIDE),
+            "backward": deque(maxlen=RECENT_PER_SIDE),
+        }
+
         def on_progress(progress: Progress) -> None:
+            recent[progress.side].appendleft(progress.last_node)
             publish(
                 "Searching...",
                 {
@@ -129,6 +158,14 @@ def find_path_task(
                     "queue_size": progress.queue_size,
                     "current_depth": progress.current_depth,
                     "last_node": progress.last_node,
+                    "frontier": {
+                        side: {
+                            "explored": stats["explored"],
+                            "depth": stats["depth"],
+                            "recent": list(recent[side]),
+                        }
+                        for side, stats in progress.sides.items()
+                    },
                 },
                 elapsed=progress.elapsed,
             )
@@ -178,6 +215,9 @@ def find_path_task(
             "nodes_explored": result.nodes_explored,
             "final_depth": max(result.length - 1, 0),
             "search_completed": True,
+            "algorithm": algorithm,
+            "meeting_page": result.meeting,
+            "sides": result.sides,
         },
     }
 
@@ -233,9 +273,14 @@ def _find_path(
         logger.info(
             "path_cache_hit", extra={"start_page": start_page, "end_page": end_page}
         )
-        return PathResult(**cached)
+        result = PathResult(**cached)
+    else:
+        finder = PathFinder(app.wikipedia, app.store, app.settings, on_progress)
+        result = finder.find(start_page, end_page, algorithm)
+        app.store.set(cache_key, asdict(result), ttl=app.settings.path_cache_ttl)
 
-    finder = PathFinder(app.wikipedia, app.store, app.settings, on_progress)
-    result = finder.find(start_page, end_page, algorithm)
-    app.store.set(cache_key, asdict(result), ttl=app.settings.path_cache_ttl)
+    # Shared links outlive the path cache; every hit renews the route.
+    app.store.set(
+        route_key(start_page, end_page), result.path, ttl=app.settings.share_ttl
+    )
     return result

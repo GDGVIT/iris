@@ -130,3 +130,42 @@ def test_backward_frontier_is_only_used_when_bidirectional(wikipedia, store, set
 def test_bidirectional_uses_backlinks(wikipedia, store, settings):
     PathFinder(wikipedia, store, settings).find("Python", "Mathematics", BIDIRECTIONAL)
     assert wikipedia.backlink_calls, "the reverse frontier must walk backlinks"
+
+
+def test_bidirectional_meets_in_the_middle_and_accounts_for_every_page(finder):
+    result = finder.find("Python", "Mathematics", BIDIRECTIONAL)
+
+    assert result.meeting in result.path[1:-1]
+    assert set(result.sides) == {"forward", "backward"}
+    assert (
+        result.sides["forward"]["explored"] + result.sides["backward"]["explored"]
+        == result.nodes_explored
+    )
+    # Each side's depth is the links it walked; together they span the path.
+    assert (
+        result.sides["forward"]["depth"] + result.sides["backward"]["depth"]
+        >= len(result.path) - 1
+    )
+
+
+def test_plain_bfs_meets_at_the_target_with_no_backward_side(finder):
+    result = finder.find("Python", "Mathematics", BFS)
+
+    assert result.meeting == "Mathematics"
+    assert set(result.sides) == {"forward"}
+    assert result.sides["forward"]["explored"] == result.nodes_explored
+
+
+def test_progress_names_the_side_that_read_each_page(wikipedia, store, settings):
+    seen: list[Progress] = []
+    PathFinder(wikipedia, store, settings, seen.append).find(
+        "Python", "Mathematics", BIDIRECTIONAL
+    )
+
+    forward = {p.last_node for p in seen if p.side == "forward"}
+    backward = {p.last_node for p in seen if p.side == "backward"}
+    assert "Python" in forward and "Python" not in backward
+    assert "Mathematics" in backward and "Mathematics" not in forward
+    assert seen[-1].sides["forward"]["explored"] + seen[-1].sides["backward"][
+        "explored"
+    ] == len(seen)

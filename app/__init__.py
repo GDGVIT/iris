@@ -18,6 +18,7 @@ from flasgger import Swagger
 from flask import Flask, Response, current_app, g, jsonify, request
 from marshmallow import ValidationError
 from werkzeug.exceptions import HTTPException
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.config import Settings
 from app.errors import ErrorCode, IrisError
@@ -77,6 +78,10 @@ def create_app(settings: Settings | None = None) -> Flask:
     settings = settings or Settings.from_env()
 
     app = Flask(__name__, static_folder="../static", static_url_path="/static")
+    # Railway terminates TLS in front of Gunicorn. Trusting one proxy hop is
+    # what makes request.remote_addr the client (for rate limits) and
+    # request.url_root https (for absolute share-preview URLs).
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)  # type: ignore[method-assign]
     app.config.update(
         SECRET_KEY=settings.secret_key,
         DEBUG=settings.debug,
@@ -119,6 +124,8 @@ def _register_hooks(app: Flask) -> None:
         response.headers["Access-Control-Allow-Origin"] = "*"
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
         response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         if request.path.startswith(("/static/", "/flasgger_static/")):
             return response
         logger.info("request_completed", extra={"http_status": response.status_code})
@@ -150,7 +157,9 @@ def _register_error_handlers(app: Flask) -> None:
         logger.warning(
             "application_error", extra={"code": exc.code, "error": exc.message}
         )
-        return problem(exc.message, exc.code, exc.status)
+        response, status = problem(exc.message, exc.code, exc.status)
+        response.headers.update(exc.headers)
+        return response, status
 
     @app.errorhandler(HTTPException)
     def on_http_error(exc: HTTPException):

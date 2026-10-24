@@ -19,12 +19,11 @@
         <meta name="twitter:description" content="Find a hyperlink path between any two Wikipedia pages. Iris searches the live link graph from both ends and shows the search as it runs." />
         <meta name="twitter:image" content="https://iris.hishaam.dev/static/og-image.png" />
         <meta name="theme-color" content="#0d1117" />
-        <link
-            rel="icon"
-            type="image/svg+xml"
-            href="/static/favicon-dark.svg"
-            id="favicon"
-        />
+        <link rel="canonical" href="https://iris.hishaam.dev/" />
+        <link rel="icon" href="/favicon.ico" sizes="48x48" />
+        <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+        <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
+        <link rel="manifest" href="/static/site.webmanifest" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link
@@ -33,19 +32,6 @@
         />
         <link rel="stylesheet" href="/static/styles.css" />
         <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" defer></script>
-        <script>
-            // Chrome ignores media queries on <link rel="icon">, so swap by hand
-            function updateFavicon() {
-                const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-                document.getElementById("favicon").href = dark
-                    ? "/static/favicon-dark.svg"
-                    : "/static/favicon-light.svg";
-            }
-            document.addEventListener("DOMContentLoaded", updateFavicon);
-            window
-                .matchMedia("(prefers-color-scheme: dark)")
-                .addEventListener("change", updateFavicon);
-        </script>
     </head>
 
     <body>
@@ -108,17 +94,17 @@
                             <div>
                                 <dt>Watch</dt>
                                 <dd>
-                                    The readings update as each page is fetched:
-                                    depth reached, pages explored, the frontier
-                                    still queued, and the page being read now.
+                                    Each side shows the pages it is reading and
+                                    how deep it has gone; the readings count
+                                    pages explored and the frontier still queued.
                                 </dd>
                             </div>
                             <div>
                                 <dt>Explore</dt>
                                 <dd>
-                                    Drag nodes to rearrange the graph; open any
-                                    step on Wikipedia. Your last search survives
-                                    a refresh.
+                                    Each step quotes the sentence that links it
+                                    to the next. Drag the graph, open any step on
+                                    Wikipedia, or copy a link to the route.
                                 </dd>
                             </div>
                             <div>
@@ -141,7 +127,7 @@
                 >
                     <div class="route-fields">
                         <div class="field field-from">
-                            <label for="startPage">From</label>
+                            <label for="startPage" id="startPageLabel">From</label>
                             <input
                                 type="text"
                                 id="startPage"
@@ -151,8 +137,18 @@
                                 autocapitalize="off"
                                 spellcheck="false"
                                 enterkeyhint="next"
+                                role="combobox"
+                                aria-autocomplete="list"
+                                aria-expanded="false"
+                                aria-controls="startPageSuggestions"
                                 required
                             />
+                            <ul
+                                class="suggestions hidden"
+                                id="startPageSuggestions"
+                                role="listbox"
+                                aria-labelledby="startPageLabel"
+                            ></ul>
                         </div>
 
                         <svg
@@ -164,7 +160,7 @@
                         </svg>
 
                         <div class="field field-to">
-                            <label for="endPage">To</label>
+                            <label for="endPage" id="endPageLabel">To</label>
                             <input
                                 type="text"
                                 id="endPage"
@@ -174,8 +170,18 @@
                                 autocapitalize="off"
                                 spellcheck="false"
                                 enterkeyhint="go"
+                                role="combobox"
+                                aria-autocomplete="list"
+                                aria-expanded="false"
+                                aria-controls="endPageSuggestions"
                                 required
                             />
+                            <ul
+                                class="suggestions hidden"
+                                id="endPageSuggestions"
+                                role="listbox"
+                                aria-labelledby="endPageLabel"
+                            ></ul>
                         </div>
                     </div>
 
@@ -194,6 +200,14 @@
                             Clear
                         </button>
                     </div>
+
+                    <p class="examples" id="examples">
+                        <span class="examples-label">Try</span>
+                        <span class="examples-list" id="examplesList"></span>
+                        <button type="button" id="surpriseBtn" class="examples-surprise">
+                            Surprise me
+                        </button>
+                    </p>
 
                     <div
                         id="notice"
@@ -302,10 +316,25 @@
                         <span class="reg reg-bl" aria-hidden="true"></span>
                         <span class="reg reg-br" aria-hidden="true"></span>
 
+                        <!-- The two frontiers: each end's chip, the pages that
+                             side read last, and a line each side fills as it
+                             goes deeper, until they meet. -->
                         <div class="wait" id="waitScene" aria-hidden="true">
-                            <span class="wait-end from" id="waitFrom">Barack Obama</span>
-                            <span class="wait-line"><span></span></span>
-                            <span class="wait-end to" id="waitTo">Mathematics</span>
+                            <div class="wait-side from">
+                                <span class="wait-end from" id="waitFrom">Barack Obama</span>
+                                <ol class="wait-trail" id="trailForward"></ol>
+                                <p class="wait-count" id="countForward"></p>
+                            </div>
+                            <span class="wait-line">
+                                <span class="wait-reach from" id="reachForward"></span>
+                                <span class="wait-reach to" id="reachBackward"></span>
+                                <span class="wait-sweep"></span>
+                            </span>
+                            <div class="wait-side to">
+                                <span class="wait-end to" id="waitTo">Mathematics</span>
+                                <ol class="wait-trail" id="trailBackward"></ol>
+                                <p class="wait-count" id="countBackward"></p>
+                            </div>
                         </div>
 
                         <svg
@@ -317,9 +346,19 @@
                     </div>
 
                     <div class="route-list hidden" id="pathStepsContainer">
-                        <h2 class="route-list-title">Route</h2>
+                        <div class="route-list-head">
+                            <h2 class="route-list-title">Route</h2>
+                            <button type="button" id="shareBtn" class="btn btn-text share-btn">
+                                <svg viewBox="0 0 16 16" aria-hidden="true">
+                                    <path d="M6.5 9.5l3-3M7 4.5l1.2-1.2a2.5 2.5 0 013.5 3.5L10.5 8M9 11.5l-1.2 1.2a2.5 2.5 0 01-3.5-3.5L5.5 8" />
+                                </svg>
+                                <span id="shareLabel">Copy link</span>
+                            </button>
+                        </div>
                         <p class="route-summary" id="routeSummary"></p>
+                        <p class="route-explain hidden" id="routeExplain"></p>
                         <ol class="steps" id="pathSteps"></ol>
+                        <p class="sr-only" aria-live="polite" id="shareStatus"></p>
                     </div>
                 </section>
             </main>

@@ -1,7 +1,7 @@
 FROM python:3.13-slim
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# Pinned so a uv release can never change a build that the repo did not
+COPY --from=ghcr.io/astral-sh/uv:0.10.11 /uv /uvx /bin/
 
 WORKDIR /app
 
@@ -9,15 +9,11 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
-# Copy application code
+# Copy application code (entrypoint.sh is executable in git)
 COPY . .
-
-# Copy and set up entrypoint
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
 
 # Make the venv's binaries available (gunicorn, celery, etc.)
 ENV PATH="/app/.venv/bin:$PATH"
 
 # SERVICE_TYPE=worker runs celery, anything else runs gunicorn
-CMD ["/entrypoint.sh"]
+CMD ["/app/entrypoint.sh"]

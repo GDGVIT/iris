@@ -398,3 +398,117 @@ def test_spaces_requests_by_the_configured_delay(monkeypatch):
     client._await_rate_slot()
 
     assert waits and waits[0] > 0, "the second call must wait out the interval"
+
+
+# --- Hubs -------------------------------------------------------------------
+
+
+def test_hub_link_lists_are_cached_for_longer(store):
+    settings = Settings(
+        env="testing",
+        secret_key="test",
+        wikipedia_request_delay=0,
+        hub_link_threshold=3,
+        links_cache_ttl=100,
+        hub_cache_ttl=10_000,
+    )
+    session = FakeSession(
+        FakeResponse(links_payload("Hub", ["A", "B", "C"])),
+        FakeResponse(links_payload("Leaf", ["A"])),
+    )
+    client = build(settings, session, cache=store)
+
+    client.links(["Hub"])
+    client.links(["Leaf"])
+
+    raw = store._redis
+    assert raw.ttl("wiki_links:Hub") > 100
+    assert raw.ttl("wiki_links:Leaf") <= 100
+
+
+# --- Suggestions --------------------------------------------------------------
+
+
+def suggest_payload(*pages: dict) -> dict:
+    return {"query": {"pages": list(pages)}}
+
+
+def test_suggests_titles_in_rank_order_with_descriptions(settings):
+    session = FakeSession(
+        FakeResponse(
+            suggest_payload(
+                {"title": "Shah Rukh", "index": 2, "description": "Timurid ruler"},
+                {"title": "Shah Rukh Khan", "index": 1, "description": "Actor"},
+                {"title": "Shah", "index": 3, "pageprops": {"disambiguation": ""}},
+            )
+        )
+    )
+
+    found = build(settings, session).suggest("shah ru")
+
+    assert [s.title for s in found] == ["Shah Rukh Khan", "Shah Rukh", "Shah"]
+    assert found[0].description == "Actor"
+    assert [s.is_disambiguation for s in found] == [False, False, True]
+    assert session.requests[0]["gpssearch"] == "shah ru"
+
+
+def test_two_prefixes_redirecting_to_one_article_appear_once(settings):
+    session = FakeSession(
+        FakeResponse(
+            suggest_payload(
+                {"title": "United States", "index": 1},
+                {"title": "United States", "index": 4},
+            )
+        )
+    )
+    assert len(build(settings, session).suggest("us")) == 1
+
+
+def test_caches_suggestions_case_insensitively(settings, store):
+    session = FakeSession(FakeResponse(suggest_payload({"title": "Banana"})))
+    client = build(settings, session, cache=store)
+
+    client.suggest("Ban")
+    client.suggest("ban")
+
+    assert len(session.requests) == 1
+
+
+def test_an_empty_prefix_asks_nothing(settings):
+    session = FakeSession()
+    assert build(settings, session).suggest("  ") == []
+    assert session.requests == []
+
+
+# --- Link context -------------------------------------------------------------
+
+
+def wikitext_payload(text: str) -> dict:
+    return {
+        "query": {
+            "pages": [
+                {"title": "A", "revisions": [{"slots": {"main": {"content": text}}}]}
+            ]
+        }
+    }
+
+
+def test_link_context_reads_the_article_wikitext(settings, store):
+    session = FakeSession(FakeResponse(wikitext_payload("A links to [[B]] here.")))
+    client = build(settings, session, cache=store)
+
+    context = client.link_context("A", "B")
+    again = client.link_context("A", "B")
+
+    assert (context.before, context.link, context.after) == (
+        "A links to ",
+        "B",
+        " here.",
+    )
+    assert again == context
+    assert len(session.requests) == 1, "the second lookup comes from the cache"
+
+
+def test_link_context_of_a_missing_article_is_elsewhere(settings):
+    session = FakeSession(FakeResponse({"query": {"pages": [{"missing": True}]}}))
+    assert build(settings, session).link_context("Gone", "B").where == "elsewhere"

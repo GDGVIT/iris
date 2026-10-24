@@ -24,7 +24,7 @@ The implementation is itself part of the point. The project stands as a demonstr
 
 ## Operating Context
 
-- Single page, no accounts, no persistence beyond the browser. A visitor types two titles and presses one button.
+- Single page, no accounts. A visitor types two titles (with suggestions) or picks an example, and presses one button. A found route is kept for thirty days so a shared link can show it.
 - Searches run as background Celery tasks and are polled by the UI; a search survives a page refresh because the latest one is kept in `localStorage`.
 - Deployed publicly at `iris.hishaam.dev` (Railway, Docker; `entrypoint.sh` switches role on `SERVICE_TYPE`). It is live but not actively promoted, so traffic is incidental and stakes are low — strangers can still arrive cold with no context.
 - A run takes seconds to a couple of minutes. Waiting is a normal part of the experience, not an error state.
@@ -46,7 +46,7 @@ The implementation is itself part of the point. The project stands as a demonstr
 ## Brand Commitments
 
 - Name: **Iris**; full title "Iris: Wikipedia Path Finder".
-- Existing identity assets, all in `static/`: `logo.svg`, `favicon-dark.svg` / `favicon-light.svg` (switched on `prefers-color-scheme`), `og-image.svg` / `og-image.png`.
+- Existing identity assets, all in `static/`: `logo.svg`, `favicon.svg` (its lines follow `prefers-color-scheme` from inside the SVG), `favicon.ico`, `apple-touch-icon.png`, `icon-192.png` / `icon-512.png` (web manifest), `og-image.svg` / `og-image.png`.
 - The GitHub-dark palette and JetBrains Mono are binding: the README and OG image are built on them, so a change to the theme is a change to published assets.
 - GPL-3.0 licensed (see `LICENSE`), open source at `github.com/mdhishaamakhtar/iris`.
 - Built by Md Hishaam Akhtar and Sharanya Mukherjee under DSC VIT; the README carries that attribution.

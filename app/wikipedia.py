@@ -27,6 +27,7 @@ import requests
 from app.config import Settings
 from app.errors import WikipediaAPIError
 from app.store import RedisStore
+from app.wikitext import LinkContext, find_link_context
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,8 @@ ARTICLE_NAMESPACE = 0
 links out of the 500-link allowance, and keeps titles that merely contain a
 colon ("Star Wars: Episode IV – A New Hope") in."""
 
+SUGGESTION_LIMIT = 8
+
 PageFetched = Callable[[str, list[str]], None]
 """Called with (title, titles-found) as each page arrives. Runs on worker threads."""
 
@@ -46,6 +49,13 @@ PageFetched = Callable[[str, list[str]], None]
 class PageStatus:
     exists: bool
     resolved_title: str
+    is_disambiguation: bool
+
+
+@dataclass(frozen=True, slots=True)
+class Suggestion:
+    title: str
+    description: str
     is_disambiguation: bool
 
 
@@ -136,6 +146,10 @@ class WikipediaSource(Protocol):
 
     def page_status(self, title: str) -> PageStatus: ...
 
+    def suggest(self, prefix: str) -> list[Suggestion]: ...
+
+    def link_context(self, source: str, target: str) -> LinkContext: ...
+
 
 class WikipediaClient:
     """Fetches page links, with a shared rate limit and a Redis-backed cache."""
@@ -181,6 +195,87 @@ class WikipediaClient:
         if self.cache:
             self.cache.set(cache_key, asdict(status), ttl=self.settings.page_cache_ttl)
         return status
+
+    def suggest(self, prefix: str) -> list[Suggestion]:
+        """Articles whose titles start with ``prefix``, best match first.
+
+        Redirects are resolved, so "usa" offers "United States" rather than the
+        redirect page; disambiguation pages are flagged so the UI can say so
+        before they are rejected as an end page.
+        """
+        prefix = prefix.strip()
+        if not prefix:
+            return []
+        cache_key = f"suggest:{prefix.casefold()}"
+        if self.cache and (cached := self.cache.get(cache_key)) is not None:
+            return [Suggestion(**item) for item in cached]
+
+        query = self._request(
+            {
+                "generator": "prefixsearch",
+                "gpssearch": prefix,
+                "gpslimit": SUGGESTION_LIMIT,
+                "gpsnamespace": ARTICLE_NAMESPACE,
+                "prop": "description|pageprops",
+                "ppprop": "disambiguation",
+                "formatversion": 2,
+            }
+        ).get("query", {})
+
+        # Two prefix hits can redirect to one article; keep its best rank.
+        ranked = sorted(query.get("pages", []), key=lambda page: page.get("index", 0))
+        seen: set[str] = set()
+        suggestions: list[Suggestion] = []
+        for page in ranked:
+            title = page.get("title", "")
+            if not title or title in seen or "missing" in page:
+                continue
+            seen.add(title)
+            suggestions.append(
+                Suggestion(
+                    title=title,
+                    description=page.get("description", ""),
+                    is_disambiguation="disambiguation" in page.get("pageprops", {}),
+                )
+            )
+
+        if self.cache:
+            self.cache.set(
+                cache_key,
+                [asdict(item) for item in suggestions],
+                ttl=self.settings.suggest_cache_ttl,
+            )
+        return suggestions
+
+    def link_context(self, source: str, target: str) -> LinkContext:
+        """The sentence in ``source`` that carries its link to ``target``."""
+        cache_key = f"context:{source}:{target}"
+        if self.cache and (cached := self.cache.get(cache_key)):
+            return LinkContext(**cached)
+
+        response = self._request(
+            {
+                "titles": source,
+                "prop": "revisions",
+                "rvprop": "content",
+                "rvslots": "main",
+                "formatversion": 2,
+            }
+        )
+        pages = response.get("query", {}).get("pages", [])
+        revisions = pages[0].get("revisions", []) if pages else []
+        wikitext = (
+            revisions[0].get("slots", {}).get("main", {}).get("content", "")
+            if revisions
+            else ""
+        )
+        context = find_link_context(wikitext, target)
+
+        if self.cache:
+            self.cache.set(
+                cache_key, asdict(context), ttl=self.settings.context_cache_ttl
+            )
+        return context
 
     def _page_status(self, title: str) -> PageStatus:
         query = self._request(
@@ -276,12 +371,18 @@ class WikipediaClient:
                     self.cache.set(
                         f"{query.cache_prefix}:{title}",
                         found,
-                        ttl=self.settings.links_cache_ttl,
+                        ttl=self._links_ttl(found),
                     )
                 if on_page:
                     on_page(title, found)
 
         return results
+
+    def _links_ttl(self, found: list[str]) -> int:
+        """Hubs are cached longer: see ``Settings.hub_cache_ttl``."""
+        if len(found) >= self.settings.hub_link_threshold:
+            return self.settings.hub_cache_ttl
+        return self.settings.links_cache_ttl
 
     def _fetch_one(self, query: LinkQuery, title: str) -> list[str]:
         """Fetch one page, following continuations up to the configured limit."""
